@@ -1,10 +1,16 @@
 #!/usr/bin/perl	
  
-# nws_hourly_forecast
-#   Returns an hourly forecast for 72 hours from the given time
+# nws_dwml_forecast
+#   Returns an hourly forecast for given lat,lon 72 hours from the given time
+#   Returns geoJSON FeatureCollection containing Feature for lat,lon 
+#		properties contains:
+#			moreWeatherInformation: URL of detailed forecast
+#			forecastSeries: hash keyed by starttime in UT
+#					contains:
+#						"hazards","temperature","weather-text","weather-icon"
 #
 #	 IN: lat, lon, ut
-#   OUT: 
+#   OUT: geoJSON FeatureCollection
 
 use LWP::UserAgent;
 use XML::Parser;
@@ -14,22 +20,38 @@ use Data::Dumper;
 use DateTime::Format::ISO8601;
 use DateTime;
 use CGI;
+use CGI::Carp;
+
 
 my $query = CGI->new;
+
+# only allowing GET
+$ENV{'REQUEST_METHOD'} =~ tr/a-z/A-Z/;
+if (defined($ENV) && $ENV{'REQUEST_METHOD'} ne "GET")
+{
+	print $query->header(
+	  	-type=>'text/plain',
+		-status=> '405 Method Not Allowed'
+	);
+	exit;
+}
 
 #gather the latitude and longitude
 my $lat = $query->param('lat');
 my $lon = $query->param('lon');
 
-if( not defined($lat)) { 
-	$lat = "47.50806";#"42.18939";
-	$lon = "-111.2951970000000";#"-83.24337";
+# allow them to be undefined
+if( not (defined($lat) && defined($lon) && length($lat)>0 && length($lon)>0)) { 
+
+	$lat = "41.0002";#"42.18939";
+	$lon = "-115.5012";#"-83.24337";
+
 }
 
 #gather the time
 my $time_utc_str = $query->param('timeutc');
 
-if( defined($time_utc_str)) {
+if( defined($time_utc_str) && length($time_utc_str)>0) {
 	$time_utc = DateTime::Format::ISO8601->parse_datetime( $time_utc_str );			
 	$time_utc->set_time_zone('UTC');
 }
@@ -41,7 +63,6 @@ my  $time_zone=$time_utc->time_zone();;
 
 # print the content header showing we are returning a json object
 print $query->header(-type=>'application/json',-expires=>'+1h');
-
 
 
 my $req_str = "http://graphical.weather.gov/xml/sample_products/browser_interface/ndfdXMLclient.php?product=time-series";
@@ -69,8 +90,7 @@ if ($res->is_success) {
 	# initialize parser object and parse the string
 	
 	$parser = new XML::LibXML;								 
-	#my $doc = $parser->parse_string( $xml_string );
-    
+	
 	my $doc = eval {
 		$parser->parse_string($xml_string);
 	};
@@ -79,16 +99,22 @@ if ($res->is_success) {
 	if( $@ ) {
 		$@ =~ s/at \/.*?$//s;               # remove module line number
 		print STDERR "\nERROR in xml return:\n$@\n";
+		print $query->header(
+		  	-type=>'text/plain',
+			-status=> '501 Malformed XML returned from weather.gov'
+		);
+		exit;
 		
-		;
 	}
 	#in data
 	#	get list of locations and their keys
-	#   get URL to more weather info
+	#	get URL to disclaimer
+	# 	get URL to attribution/attribution logo
 	#   get list(s) of valid time periods and their keys
  
-	# then, for each location, get parameters
-	#   within parameters, 
+	# then, for each location
+	#   get URL to more weather info
+	#   get parameters:
 	#    temperature, contains list of values
 	#    hazards, condtains list of azard-conditions
 	#    weather, condtains list of weather-conditions
@@ -116,7 +142,7 @@ if ($res->is_success) {
 		# description of location
 		foreach my $area_description ($location->findnodes('.//area-description[1]') ) {
 			$locations{$lk}{ 'area-description' } = $area_description->textContent;
-			#print $area_description ->textContent;
+			print $area_description ->textContent;
 		}	
 	} 
 	
@@ -151,7 +177,7 @@ if ($res->is_success) {
 		foreach my $t ($time_layout->findnodes('./start-valid-time') ) {
 			my $datetime_str = $t->textContent;
 			my $dt = DateTime::Format::ISO8601->parse_datetime( $datetime_str );
-			
+			print STDERR $datetime_str."\n";
 			# check for errors here
 			# todo: use bLocal?
 			$time_zone = $dt->time_zone();
@@ -168,7 +194,11 @@ if ($res->is_success) {
 	# get weather parameters for each point (only expecting one point at the moment)
 	# get specific weather info for each time layout (expecting multiple)
 	foreach my $lk  (keys %locations) {
-		print STDERR "location ".$lk."\n";
+
+
+		foreach my $moreWeatherInformation ($doc->findnodes('/dwml/data/moreWeatherInformatione[@applicable-location="'.$lk.'"]')) {
+		}
+		
 		foreach my $parameters ($doc->findnodes('/dwml/data/parameters[@applicable-location="'.$lk.'"]')) {
 			
 			# loop through time layouts
@@ -181,18 +211,35 @@ if ($res->is_success) {
 				foreach my $node_name ( @info_types ) {
 				
 					my $node_key = $node_name;
+					
+						# massage the keys to the output we want, as well as get the repeated value
+					my $repeated_var = "value";
+					if( $node_name eq "weather" ) {
+						$repeated_var = "weather-conditions";
+						$node_key = "weather-text";
+					}
+					elsif( $node_name eq "hazards" ) {
+						$repeated_var = "hazard-conditions";
+					}
+					elsif( $node_name eq "conditions-icon" ) {
+						$repeated_var = "icon-link";
+						$node_key = "weather-icon";
+					}
+
+
 					# get the data for this weather param if it's time layout key matches 
 					foreach my $info ($parameters->findnodes('./'.$node_name.'[@time-layout="'.$tk.'"]') ) {
-						if( $info->hasAttributes ) {
+						if( $info->hasAttributes && $node_name eq "temperature") {
 							foreach my $attr ( $info->attributes ) {
-								if( $attr->nodeName eq "type" ) {
+								if( $attr->nodeName eq "type" && $attr->getValue != "hourly" ) {
 									#eg temperature_hourly
 									#   temperature_apparent
-									$node_key = $node_name."_".$attr->getValue;
+									$node_key = $node_name."-".$attr->getValue;
 								}
 							}
 						}
 					
+						
 						foreach my $name ($info->findnodes('./name')) {
 							$hc{$node_key}{'name'} = $name->textContent;
 						}
@@ -200,16 +247,7 @@ if ($res->is_success) {
 						print STDERR "  ".$tk." ".$hc{$node_key}{'name'}."\n";
 						
 						my $idx = 0;
-						my $repeated_var = "value";
-						if( $node_name eq "weather" ) {
-							$repeated_var = "weather-conditions";
-						}
-						elsif( $node_name eq "hazards" ) {
-							$repeated_var = "hazard-conditions";
-						}
-						elsif( $node_name eq "conditions-icon" ) {
-							$repeated_var = "icon-link";
-						}
+						
 						
 						# now scoop up the parameter value for each time period
 						foreach my $condition ($info->findnodes('./'.$repeated_var) ) {
@@ -267,6 +305,13 @@ if ($res->is_success) {
 								#print $value_text.", ";
 							}
 							elsif ($node_name eq "hazards" ) {
+								# TODO: interpret hazards:
+								#<hazard hazardCode="WW.Y" phenomena="Winter Weather" significance="Advisory" hazardType="long duration">
+								#	<hazardTextURL>http://forecast.weather.gov/wwamap/wwatxtget.php?cwa=lkn&wwa=Winter%20Weather%20Advisory</hazardTextURL>
+								#</hazard>
+
+								#for now just scoop up the hazard URL
+								$value_text = $condition->textContent;
 							}
 							else {
 								$value_text = $condition->textContent;
@@ -284,6 +329,7 @@ if ($res->is_success) {
 				my $target_idx = 0;
 				my $src_idx = 0;
 				my $w_dt = $time_utc->clone();
+				
 				for( my $target_idx = 0; $target_idx < 72; $target_idx++ ) {
 					
 					for( ; $src_idx < $time_layouts{$tk}{ 'num_times' } - 1; $src_idx++ ) {
@@ -325,15 +371,19 @@ if ($res->is_success) {
 			}
 		}	
 	}
-	
-    my $json = encode_json \%locations;
+	my $json = JSON->new->allow_nonref;
 
-	print $json;
-			
-  
+	my $use_pretty = not defined($ENV);
+	my $pretty_printed = $json->pretty($use_pretty)->encode( \%locations );
+   
+	print $pretty_printed;
 	
 }
 else {
-	print STDERR $res->status_line;
+	print $query->header(
+	  	-type=>'text/plain',
+		-status=>  $res->status_line
+	);
+	exit;
 }
 
