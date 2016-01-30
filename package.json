@@ -1,0 +1,16 @@
+{
+  "name": "tour-forecast-app",
+  "version": "0.1.0",
+  "description": "Tour Forecast Angular App",
+  "main": "index.js",
+  "scripts": {
+    "start": "http-server ./ -a localhost -p 8080",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Rosalind Hartigan",
+  "license": "ISC",
+  "devDependencies": {
+    "grunt-bower-install-simple": "^1.2.0",
+    "grunt-contrib-concat": "^0.5.1"
+  }
+}
