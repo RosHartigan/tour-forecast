@@ -5,23 +5,69 @@
 #   Returns geoJSON FeatureCollection containing Feature for lat,lon 
 #		properties contains:
 #			moreWeatherInformation: URL of detailed forecast
-#			forecastSeries: hash keyed by starttime in UT
+#			?? time zone?
+#			?? Description of area
+#			?? credit/forecast url
+#			forecastSeries: array of forecasts by time slice
 #					contains:
-#						"hazards","temperature","weather-text","weather-icon"
+#						"hazards",
+#						"temperature",
+#						"weather-text",
+#						"weather-icon",
+#						"end-time",			(ut)
+#						"start-time",		(ut)
+#						"local-time"
 #
-#	 IN: lat, lon, ut
+#
+#	 IN: lat, lon, ut (unused)
 #   OUT: geoJSON FeatureCollection
+#
+#
+#	This script uses NWS services to get hourly data.  This is the most complete source of free hourly 
+#	weather data, unfortunaly, the products are somewhat disorganized. It's also only good in the US.
+#
+#	So the output will be build like this:
+#
+#	First call the digitalJSON product from the forecast service
+#   http://forecast.weather.gov/MapClick.php?lg=english&FcstType=digitalJSON&lat=43.6389&lon=-83.291
+#		this yields hourly weather information including temp, weather summary, and icons.  
+#		However it is missing hazards
+#
+#	If we can't parse it for some reason ?? try the digitalDWML product from the same service
+#
+#   http://forecast.weather.gov/MapClick.php?lg=english&FcstType=digitalDWML&lat=43.6389&lon=-83.291
+#		This yields a similar report but no icons (why???) and less nice text weather summary
+#
+#	OR the gml product from the graphical service, which unfortunately gives only three hour updates
+#	http://graphical.weather.gov/xml/sample_products/browser_interface/ndfdXMLclient.php?gmlListLatLon=43.6389&lon,-83.291&featureType=Forecast_Gml2Point&propertyName=icons,wx&startTime=2016-01-01T00:00:00&compType=Between";
+#
+#	Now we can call the the graphical service to get a DWML product containing all the hazards for each hour
+#	http://graphical.weather.gov/xml/sample_products/browser_interface/ndfdXMLclient.php?product=time-series&wwa=wwa&listLatLon=43.6389&lon,-83.291
+#
+#
+#	So that gives us three formats to parse:
+#		DWML
+#		GML
+#		NWS's own digitalJSON format which is LOOSELY based on DWML
+#
+#	And we will output geoJSON as notated above
+#
+#	Written by Ros Hartigan in 2016
+#	www.xrgb.com
+#	www.tourforecast.com
+#
 
 use LWP::UserAgent;
 use XML::Parser;
 use XML::LibXML;
 use JSON;
-use Data::Dumper;
+use Data::Dumper qw(Dumper);
 use DateTime::Format::ISO8601;
 use DateTime;
 use CGI;
 use CGI::Carp;
 
+sub compileForecastFromDWML($\%);
 
 my $query = CGI->new;
 
@@ -40,43 +86,69 @@ if (defined($ENV) && $ENV{'REQUEST_METHOD'} ne "GET")
 my $lat = $query->param('lat');
 my $lon = $query->param('lon');
 
+if (! defined($ENV) ) {
+	($lat, $lon) = 	@ARGV;
+}
+
 # allow them to be undefined
 if( not (defined($lat) && defined($lon) && length($lat)>0 && length($lon)>0)) { 
 
-	$lat = "41.0002";#"42.18939";
+	$lat = "41.0002";  #"42.18939";
 	$lon = "-115.5012";#"-83.24337";
-
 }
 
-#gather the time
-my $time_utc_str = $query->param('timeutc');
 
-if( defined($time_utc_str) && length($time_utc_str)>0) {
-	$time_utc = DateTime::Format::ISO8601->parse_datetime( $time_utc_str );			
-	$time_utc->set_time_zone('UTC');
+#gather the passed time and time_zone
+#not really using this... soon to be deprecated
+my $user_time_utc_str = $query->param('timeutc');
+my $time_zone;
+
+if( defined($user_time_utc_str) && length($user_time_utc_str)>0) {
+	$user_time_utc = DateTime::Format::ISO8601->parse_datetime( $user_time_utc_str );	
+	$user_time_zone=$time_utc->time_zone();		
+	$user_time_utc->set_time_zone('UTC');
 }
 else {
-	$time_utc = DateTime->now(time_zone => 'UTC' );
+	$user_time_utc = DateTime->now(time_zone => 'UTC' );
+	$user_time_zone=$user_time_utc->time_zone();		
 }
-my  $time_zone=$time_utc->time_zone();;
 
 
 # print the content header showing we are returning a json object
 print $query->header(-type=>'application/json',-expires=>'+1h');
 
+#create the feature array
+my @features;
 
+# and our solitary feature
+my $latLonString =  $lat.",".$lon;
+		
+my $feature = {
+	type => "Feature",
+	id => $latLonString,
+	geometry => {
+		type => "Point",
+		coordinates => $latLonString
+	},
+	properties => {
+		'sources' => ()
+	}
+};
+		
+		
+# first we try to use the experimental NWS product - digitalJSON
+
+#lastly the DWML time series product that returns warnanings
 my $req_str = "http://graphical.weather.gov/xml/sample_products/browser_interface/ndfdXMLclient.php?product=time-series";
-$req_str =  $req_str."&temp=temp&wx=wx&wwa=wwa&appt=appt&icons=icons";
 
-$req_str = $req_str."&listLatLon=".$lat.",".$lon;#."&begin=".$time_utc;#."&end=".$endTime;
+# fetch temp, weather icons, weather text, and hazards
+$req_str =  $req_str."&temp=temp&wx=wx&icons=icons&wwa=wwa";
 
-#$req_str = "http://forecast.weather.gov/MapClick.php?lat=".$lat."&lon=".$lon."&FcstType=digitalDWML";
+# at our location
+$req_str = $req_str."&listLatLon=".$lat.",".$lon;#."&begin=".$time_utc;
 
-print STDERR $req_str."\n";
 
 my $req = HTTP::Request->new(GET => $req_str);
-
-
 my $ua = LWP::UserAgent->new;
 my $res = $ua->request($req);
 
@@ -88,7 +160,6 @@ if ($res->is_success) {
 	$xml_string =~ s/\R[\t ]*//g;
 	
 	# initialize parser object and parse the string
-	
 	$parser = new XML::LibXML;								 
 	
 	my $doc = eval {
@@ -101,11 +172,45 @@ if ($res->is_success) {
 		print STDERR "\nERROR in xml return:\n$@\n";
 		print $query->header(
 		  	-type=>'text/plain',
-			-status=> '501 Malformed XML returned from weather.gov'
+			-status=> '501 Malformed XML returned from graphical.weather.gov'
 		);
 		exit;
 		
 	}
+	#glean our geoJSON forecast data from the DWML
+	compileForecastFromDWML($doc, \$feature);
+
+	my $featureCollection = {
+		type => "FeatureCollection",
+		features => \@features
+	};
+	
+	# now create our geoJSON FeatureCollection
+	my $json = JSON->new->allow_nonref;
+
+	# pretty print for shell
+	my $use_pretty = not defined($ENV);
+	my $pretty_printed = $json->pretty($use_pretty)->encode( $featureCollection );
+
+	print $pretty_printed;
+}
+else {
+	print $query->header(
+	  	-type=>'text/plain',
+		-status=>  $res->status_line
+	);
+	print STDERR $res->status_line."\n";
+}
+
+# 
+#	compileForecastFromDWML
+#
+#	POPULATE geoJSON feature from DWML XML doc	
+#	IN:
+sub compileForecastFromDWML($\%) {
+	my ($doc) = shift;
+	my ($feature) = shift;
+
 	#in data
 	#	get list of locations and their keys
 	#	get URL to disclaimer
@@ -122,28 +227,38 @@ if ($res->is_success) {
 	
 	#get the locations
 	my %locations;
+
 	foreach my $location ($doc->findnodes('/dwml/data/location')) {
+
+		my %location;
+
 		my $lk="no location key";
 		foreach my $location_key ($location->findnodes('.//location-key[1]') ) {
 			$lk = $location_key->textContent;
-			$locations{$lk}{'location-key'} = $lk;
+			$location{'location-key'} = $lk;
 		}
-		
+
+		# description of location
+		foreach my $area_description ($location->findnodes('.//area-description[1]') ) {
+			$location{ 'area-description' } = $area_description->textContent;
+		}	
+
 		# latitude and longitude
+		my $bLatMatches = false;
+		my $bLonMatches = false;
 		foreach my $location_point ( $location->findnodes('.//point[1]') ) {
 			if( $location_point->hasAttributes ) {
 				foreach my $attr ( $location_point->attributes ) {
-					#print " ".$attr->nodeName." ".$attr->getValue;
-					$locations{$lk}{ $attr->nodeName } = $attr->getValue;
+					$location{ $attr->nodeName } = $attr->getValue;
 				}
 			}
 		}
-		
-		# description of location
-		foreach my $area_description ($location->findnodes('.//area-description[1]') ) {
-			$locations{$lk}{ 'area-description' } = $area_description->textContent;
-			print $area_description ->textContent;
-		}	
+			
+		#only return the data for our point
+		if( index($lat,$location{'latititude'}) != -1 && index($lon,$location{'longitude'}) != -1  ) {
+			print STDERR $lk.", ".$lat.", ".$lon."\n";
+			$locations{$lk} = \%location;
+		}			
 	} 
 	
 	#get the time layouts
@@ -177,7 +292,7 @@ if ($res->is_success) {
 		foreach my $t ($time_layout->findnodes('./start-valid-time') ) {
 			my $datetime_str = $t->textContent;
 			my $dt = DateTime::Format::ISO8601->parse_datetime( $datetime_str );
-			print STDERR $datetime_str."\n";
+			#print STDERR $datetime_str."\n";
 			# check for errors here
 			# todo: use bLocal?
 			$time_zone = $dt->time_zone();
@@ -190,15 +305,19 @@ if ($res->is_success) {
 		$time_layouts{$tk}{ 'num_times' } = $idx;		
 	} 
 	
+	# create feature array for the featureCollection object	
 	
 	# get weather parameters for each point (only expecting one point at the moment)
 	# get specific weather info for each time layout (expecting multiple)
-	foreach my $lk  (keys %locations) {
-
-
-		foreach my $moreWeatherInformation ($doc->findnodes('/dwml/data/moreWeatherInformatione[@applicable-location="'.$lk.'"]')) {
+	foreach my $lk  (keys \%locations) {
+		
+		
+		foreach my $mwi ($doc->findnodes('/dwml/data/moreWeatherInformatione[@applicable-location="'.$lk.'"]')) {
+			$feature->{'properties'}{'moreWeatherInformation'} = $mwi->textContent;
 		}
 		
+		# now scoop up the forecast info into any array of blocks keyed by time
+		my %data;
 		foreach my $parameters ($doc->findnodes('/dwml/data/parameters[@applicable-location="'.$lk.'"]')) {
 			
 			# loop through time layouts
@@ -226,7 +345,6 @@ if ($res->is_success) {
 						$node_key = "weather-icon";
 					}
 
-
 					# get the data for this weather param if it's time layout key matches 
 					foreach my $info ($parameters->findnodes('./'.$node_name.'[@time-layout="'.$tk.'"]') ) {
 						if( $info->hasAttributes && $node_name eq "temperature") {
@@ -244,7 +362,7 @@ if ($res->is_success) {
 							$hc{$node_key}{'name'} = $name->textContent;
 						}
 
-						print STDERR "  ".$tk." ".$hc{$node_key}{'name'}."\n";
+						#print STDERR "  ".$tk." ".$hc{$node_key}{'name'}."\n";
 						
 						my $idx = 0;
 						
@@ -305,6 +423,41 @@ if ($res->is_success) {
 								#print $value_text.", ";
 							}
 							elsif ($node_name eq "hazards" ) {
+								foreach my $hazard ($condition->findnodes('./hazard')) {
+	
+									my $phenomena_text = "";
+									my $signiciance_text = "";
+									
+									# first figure out what to call it
+									if( $hazard->hasAttributes ) {
+										foreach my $va ( $hazard->attributes ) {
+											if( $va->getValue ne "none") {
+												if( $va->nodeName eq "phenomena" ) {
+													
+													$phenomena_text = $va->getValue." ";
+													
+												}
+												elsif ( $va->nodeName eq "significance" ) {
+													$signiciance_text = $va->getValue;
+												}
+											}
+										}
+										
+										$value_text = $phenomena_text.$signiciance_text;
+									}
+									# now get the url
+									my $hazard_url = "";
+									foreach my $hu ($hazard->findnodes('./hazardTextURL') ) {
+										$hazard_url = $hu->textContent;
+									}
+									
+									if( length($value_text) eq 0 ) {
+										$value_text = $hazard_url;
+									}
+									elsif( length($hazard_url) ne 0  ) {
+
+									}
+								}
 								# TODO: interpret hazards:
 								#<hazard hazardCode="WW.Y" phenomena="Winter Weather" significance="Advisory" hazardType="long duration">
 								#	<hazardTextURL>http://forecast.weather.gov/wwamap/wwatxtget.php?cwa=lkn&wwa=Winter%20Weather%20Advisory</hazardTextURL>
@@ -323,67 +476,52 @@ if ($res->is_success) {
 					}
 				}
 				
-				#now: run through hour 0 through 72
-				#translate from hours to index in time layout
-				#copy data into our locations hash
-				my $target_idx = 0;
-				my $src_idx = 0;
-				my $w_dt = $time_utc->clone();
-				
-				for( my $target_idx = 0; $target_idx < 72; $target_idx++ ) {
+				#copy data for each time layout into our single hourly layout
+				for(my $src_idx = 0; $src_idx < $time_layouts{$tk}{ 'num_times' } - 1; $src_idx++ ) {
 					
-					for( ; $src_idx < $time_layouts{$tk}{ 'num_times' } - 1; $src_idx++ ) {
+					# first check if we have any actual data:
+					my $has_data = false;
+					foreach my $info_key (keys %hc) {
+						my $v = $hc{$info_key}{'values'}[$src_idx];
+						if( defined($v) && $v != null && length($v)>0) {
+							$has_data = true;						
+						}
+					}
+					if( $has_data eq true ) {
 						my $cur_dt = $time_layouts{$tk}{ 'times' }[$src_idx];
 						my $next_dt = $time_layouts{$tk}{ 'times' }[$src_idx + 1];
 						
-							my $lt = $w_dt->clone();
-							$lt->set_time_zone($time_zone);
-							
-							print STDERR $lt->iso8601().$lt->strftime("%z")."\n";
-							$locations{$lk}{'data'}[$target_idx]{'time'} = $lt->iso8601().$lt->strftime("%z");
-							$locations{$lk}{'data'}[$target_idx]{'time_utc_str'} = $time_utc_str;
-							$locations{$lk}{'data'}[$target_idx]{'time_utc'} = $time_utc->iso8601().$time_utc->strftime("%z");
+						#use UTC for key
+						my $time_key = $cur_dt->iso8601()."_". $next_dt	->iso8601();
 
-							if ($cur_dt > $w_dt) {
-							foreach my $info_key (keys %hc) {
-								$locations{$lk}{'data'}[$target_idx]{$info_key} = "No data";
-							}
-							print STDERR "  $tk no src for hr $target_idx (".$w_dt."). Starts ".$cur_dt."\n";
-							last;
-						} elsif( $cur_dt <= $w_dt && $next_dt > $w_dt ) {
-							#move data from src index to target index
-							foreach my $info_key (keys %hc) {
-								$locations{$lk}{'data'}[$target_idx]{$info_key} = $hc{$info_key}{'values'}[$src_idx];
-								
-							}
-
-							last;
+						#also pass local time to make our lives easier
+						my $lt = $cur_dt->clone();
+						$lt->set_time_zone($time_zone);
+						
+						$data{$time_key}{'start_time_utc'} = $cur_dt->iso8601();
+						$data{$time_key}{'end_time_utc'} = $next_dt->iso8601();
+						$data{$time_key}{'time'} = $lt->iso8601().$lt->strftime("%z");
+					
+						foreach my $info_key (keys %hc) {
+							$data{$time_key}{$info_key} = $hc{$info_key}{'values'}[$src_idx];
 						}
-						else {
-							#print $cur_dt." ".$w_dt." " .$src_idx." != ".$target_idx."\n";
-						}
-			
 					}
-			
-					$w_dt->add(minutes => 60);
-				}
-				
-			}
-		}	
-	}
-	my $json = JSON->new->allow_nonref;
+					
+				} # looping over times	
+			} #looping over time layouts
 
-	my $use_pretty = not defined($ENV);
-	my $pretty_printed = $json->pretty($use_pretty)->encode( \%locations );
-   
-	print $pretty_printed;
+		} #looping over weather parameters	
+
+		# now build a Feature based on this location information
+		my @forecastSeries = ();
+		foreach my $k (sort(keys %data)) {
+			push(\@forecastSeries, $data{$k});
+		}
+		$feature->{'properties'}{'forecastSeries'} = \@forecastSeries;
+
+		push( \@features, $feature);
 	
-}
-else {
-	print $query->header(
-	  	-type=>'text/plain',
-		-status=>  $res->status_line
-	);
-	exit;
+	} #looping over locations
+
 }
 
