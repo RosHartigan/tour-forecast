@@ -1,6 +1,6 @@
 #!/usr/bin/perl	
  
-# nws_dwml_forecast
+# nws_forecast
 #   Returns an hourly forecast for given lat,lon 72 hours from the given time
 #   Returns geoJSON FeatureCollection containing Feature for lat,lon 
 #		properties contains:
@@ -123,39 +123,118 @@ my @features;
 # and our solitary feature
 my $latLonString =  $lat.",".$lon;
 		
-my $feature = {
+my $feature = (
 	type => "Feature",
 	id => $latLonString,
-	geometry => {
+	geometry => (
 		type => "Point",
 		coordinates => $latLonString
-	},
-	properties => {
+	),
+	properties => (
 		'sources' => ()
-	}
+	)
+);
+		
+#create our useragent
+my $ua = LWP::UserAgent->new;
+
+#and our json reader/writer
+my $json = JSON->new->allow_nonref;
+
+my %weather_data;
+
+use constant {
+	WEATHERTEXT => 'weather-text',
+	WEATHERSUMMARY => 'weather-summary',
+	WEATHERICON => 'weather-icon',
+	TEMPERATURE => 'temperature',
+	HAZARDS => 'hazards'
 };
-		
-		
+use constant {
+	NWSICONDIR => 'http://forecast.weather.gov/images/wtf/'
+};
+
+sub create_time_slot($$) {
+	$start_date = shift;
+	$end_date = shift;
+
+	my $time_key = $start_date->iso8601()."_". $end_date->iso8601();
+
+	$weather_data{$time_key}{'start_time_utc'} = $start_date->iso8601();
+	$weather_data{$time_key}{'end_time_utc'} = $end_date->iso8601();
+
+	return $time_key;
+}
+
 # first we try to use the experimental NWS product - digitalJSON
+#   http://forecast.weather.gov/MapClick.php?lg=english&FcstType=digitalJSON&lat=43.6389&lon=-83.291
+my $req_str = "http://forecast.weather.gov/MapClick.php?lg=english&FcstType=digitalJSON&lat=$lat&lon=$lon";
+my $req = HTTP::Request->new(GET => $req_str);
+my $res = $ua->request($req);
+if ($res->is_success) {
+	my $json_string = $res->decoded_content;
+	my $jsonObject = $json->decode($json_string);
+
+	my %fieldxfer = (
+		'temperature' => TEMPERATURE,
+		'weather' => WEATHERSUMMARY,
+		'iconLink' => WEATHERICON
+		);
+
+	# loop through the time periods
+	foreach my $jkey (keys $jsonObject) {
+				
+		# each time period will have a 'unixtime' field that defines the hours
+		my $unixTimeArray = $jsonObject->{$jkey}{'unixtime'};
+		if( defined($unixTimeArray) ) {
+		
+			for( my $tidx = 0; $tidx < scalar  (@$unixTimeArray); $tidx++) {
+				my $sdt = DateTime->from_epoch(epoch => $unixTimeArray->[$tidx] );
+				my $edt = DateTime->from_epoch(epoch => 60 * 60 + $unixTimeArray->[$tidx] );
+		
+				my $time_key = create_time_slot($sdt, $edt);
+
+				foreach $param (keys %fieldxfer) {
+					#print "  ".$fieldxfer{$param}."  ".$jsonObject->{$jkey}{$param}[$tidx]." ";
+					my $value = $jsonObject->{$jkey}{$param}[$tidx];
+
+					# not a real link - just a name in the nws icon bank
+					if( $param eq 'iconLink' && length($value) > 0) {
+						$value = NWSICONDIR . $value;
+					}
+					$weather_data{$time_key}{$fieldxfer{$param}} = $value;
+				}
+			}
+		}
+
+	}
+}
+else {
+	print $query->header(
+	  	-type=>'text/plain',
+		-status=>  $res->status_line
+	);
+	print STDERR $res->status_line."\n";
+}
 
 #lastly the DWML time series product that returns warnanings
-my $req_str = "http://graphical.weather.gov/xml/sample_products/browser_interface/ndfdXMLclient.php?product=time-series";
+$req_str = "http://graphical.weather.gov/xml/sample_products/browser_interface/ndfdXMLclient.php?product=time-series";
 
 # fetch temp, weather icons, weather text, and hazards
-$req_str =  $req_str."&temp=temp&wx=wx&icons=icons&wwa=wwa";
+#$req_str =  $req_str."&temp=temp&wx=wx&icons=icons&wwa=wwa";
+$req_str =  $req_str."&wwa=wwa";
 
 # at our location
 $req_str = $req_str."&listLatLon=".$lat.",".$lon;#."&begin=".$time_utc;
 
 
-my $req = HTTP::Request->new(GET => $req_str);
-my $ua = LWP::UserAgent->new;
-my $res = $ua->request($req);
+$req = HTTP::Request->new(GET => $req_str);
+$res = $ua->request($req);
 
 if ($res->is_success) {
 	
 	my $xml_string = $res->decoded_content;
-	
+	print $xml_string;
 	#get rid of carriage returns
 	$xml_string =~ s/\R[\t ]*//g;
 	
@@ -178,7 +257,7 @@ if ($res->is_success) {
 		
 	}
 	#glean our geoJSON forecast data from the DWML
-	compileForecastFromDWML($doc, \$feature);
+	compileForecastFromDWML($doc, %$feature);
 
 	my $featureCollection = {
 		type => "FeatureCollection",
@@ -186,7 +265,6 @@ if ($res->is_success) {
 	};
 	
 	# now create our geoJSON FeatureCollection
-	my $json = JSON->new->allow_nonref;
 
 	# pretty print for shell
 	my $use_pretty = not defined($ENV);
@@ -317,32 +395,34 @@ sub compileForecastFromDWML($\%) {
 		}
 		
 		# now scoop up the forecast info into any array of blocks keyed by time
-		my %data;
 		foreach my $parameters ($doc->findnodes('/dwml/data/parameters[@applicable-location="'.$lk.'"]')) {
 			
 			# loop through time layouts
 			foreach my $tk  (keys %time_layouts) {
 				my %hc;
 				
-				my @info_types = ("hazards","temperature","weather","conditions-icon");
+				my %fieldxfer = (
+					'temperature' => TEMPERATURE,
+					'weather' => WEATHERTEXT,
+					'conditions-icon' => WEATHERICON,
+					'hazards' => HAZARDS
+					);
 				
 				# loop through weather paramaters
-				foreach my $node_name ( @info_types ) {
+				foreach my $node_name ( keys %fieldxfer ) {
 				
-					my $node_key = $node_name;
+					my $node_key = $fieldxfer{$node_name};
 					
 						# massage the keys to the output we want, as well as get the repeated value
 					my $repeated_var = "value";
 					if( $node_name eq "weather" ) {
 						$repeated_var = "weather-conditions";
-						$node_key = "weather-text";
 					}
 					elsif( $node_name eq "hazards" ) {
 						$repeated_var = "hazard-conditions";
 					}
 					elsif( $node_name eq "conditions-icon" ) {
 						$repeated_var = "icon-link";
-						$node_key = "weather-icon";
 					}
 
 					# get the data for this weather param if it's time layout key matches 
@@ -362,14 +442,12 @@ sub compileForecastFromDWML($\%) {
 							$hc{$node_key}{'name'} = $name->textContent;
 						}
 
-						#print STDERR "  ".$tk." ".$hc{$node_key}{'name'}."\n";
-						
 						my $idx = 0;
 						
 						
 						# now scoop up the parameter value for each time period
 						foreach my $condition ($info->findnodes('./'.$repeated_var) ) {
-							my $value_text = "";
+							my $value = "";
 							if( $repeated_var eq "weather-conditions" ) {
 								#weather consists of a list of values
 								# these values can contain visibility elements which I am ignoring
@@ -417,16 +495,17 @@ sub compileForecastFromDWML($\%) {
 											}
 										}
 										
-										$value_text = $value_text.$coverage_text.$intensity_text.$weathertype_text.$qualifier_text;
+										$value = $value.$coverage_text.$intensity_text.$weathertype_text.$qualifier_text;
 									}
 								}
-								#print $value_text.", ";
 							}
 							elsif ($node_name eq "hazards" ) {
+								my @value_array;
+
 								foreach my $hazard ($condition->findnodes('./hazard')) {
 	
 									my $phenomena_text = "";
-									my $signiciance_text = "";
+									my $significance_text = "";
 									
 									# first figure out what to call it
 									if( $hazard->hasAttributes ) {
@@ -438,12 +517,12 @@ sub compileForecastFromDWML($\%) {
 													
 												}
 												elsif ( $va->nodeName eq "significance" ) {
-													$signiciance_text = $va->getValue;
+													$significance_text = $va->getValue;
 												}
 											}
 										}
 										
-										$value_text = $phenomena_text.$signiciance_text;
+										$value = $phenomena_text.$significance_text;
 									}
 									# now get the url
 									my $hazard_url = "";
@@ -451,26 +530,26 @@ sub compileForecastFromDWML($\%) {
 										$hazard_url = $hu->textContent;
 									}
 									
-									if( length($value_text) eq 0 ) {
-										$value_text = $hazard_url;
+									if( length($value) eq 0 ) {
+										$value = $hazard_url;
 									}
 									elsif( length($hazard_url) ne 0  ) {
-
+										$value = '<a href="'.$hazard_url.'">'.$value.'</a>'
 									}
+									push(@value_array,$value);
 								}
-								# TODO: interpret hazards:
-								#<hazard hazardCode="WW.Y" phenomena="Winter Weather" significance="Advisory" hazardType="long duration">
-								#	<hazardTextURL>http://forecast.weather.gov/wwamap/wwatxtget.php?cwa=lkn&wwa=Winter%20Weather%20Advisory</hazardTextURL>
-								#</hazard>
-
-								#for now just scoop up the hazard URL
-								$value_text = $condition->textContent;
+								if( scalar @value_array > 0 ) {
+									$value = \@value_array;
+								}
+								else {
+									$value = null;
+								}
 							}
 							else {
-								$value_text = $condition->textContent;
+								$value = $condition->textContent;
 							}
 
-							$hc{$node_key}{'values'}[$idx] = $value_text;
+							$hc{$node_key}{'values'}[$idx] = $value;
 							$idx++;
 						}
 					}
@@ -492,18 +571,14 @@ sub compileForecastFromDWML($\%) {
 						my $next_dt = $time_layouts{$tk}{ 'times' }[$src_idx + 1];
 						
 						#use UTC for key
-						my $time_key = $cur_dt->iso8601()."_". $next_dt	->iso8601();
+						my $time_key = create_time_slot($cur_dt, $next_dt);
 
 						#also pass local time to make our lives easier
 						my $lt = $cur_dt->clone();
 						$lt->set_time_zone($time_zone);
 						
-						$data{$time_key}{'start_time_utc'} = $cur_dt->iso8601();
-						$data{$time_key}{'end_time_utc'} = $next_dt->iso8601();
-						$data{$time_key}{'time'} = $lt->iso8601().$lt->strftime("%z");
-					
 						foreach my $info_key (keys %hc) {
-							$data{$time_key}{$info_key} = $hc{$info_key}{'values'}[$src_idx];
+							$weather_data{$time_key}{$info_key} = $hc{$info_key}{'values'}[$src_idx];
 						}
 					}
 					
@@ -514,8 +589,8 @@ sub compileForecastFromDWML($\%) {
 
 		# now build a Feature based on this location information
 		my @forecastSeries = ();
-		foreach my $k (sort(keys %data)) {
-			push(\@forecastSeries, $data{$k});
+		foreach my $k (sort(keys %weather_data)) {
+			push(\@forecastSeries, $weather_data{$k});
 		}
 		$feature->{'properties'}{'forecastSeries'} = \@forecastSeries;
 
