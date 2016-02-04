@@ -1,5 +1,5 @@
-#!/usr/bin/perl	
- 
+#!"\Dwimperl\perl\bin\perl.exe"
+# 
 # nws_dwml
 #
 # Parse the DWML document returned by NWS
@@ -15,7 +15,7 @@ use DateTime::Format::ISO8601;
 use DateTime;
 use CGI::Carp;
 use Data::Dumper qw(Dumper);
-
+use GeoJSON;
 
 
 # 
@@ -42,7 +42,7 @@ sub compileForecastFromDWML($\%) {
 	#    weather, condtains list of weather-conditions
 	# serialize the structure
 	
-	my ($lat, $lon) = GeoJSON::getLatLon($feature);
+	my ($lat, $lon) = GeoJSON::getLatLon(%$feature);
 
 	#get the locations
 	my %locations;
@@ -145,10 +145,10 @@ sub compileForecastFromDWML($\%) {
 				my %hc;
 				
 				my %fieldxfer = (
-					'temperature' => TEMPERATURE,
-					'weather' => WEATHERTEXT,
-					'conditions-icon' => WEATHERICON,
-					'hazards' => HAZARDS
+					'temperature' => +GeoJSON::TEMPERATURE,
+					'weather' => +GeoJSON::WEATHERTEXT,
+					'conditions-icon' => +GeoJSON::WEATHERICON,
+					'hazards' => +GeoJSON::HAZARDS
 					);
 				
 				# loop through weather paramaters
@@ -300,7 +300,7 @@ sub compileForecastFromDWML($\%) {
 				
 				#copy data for each time layout into our single hourly layout
 				my $data_array = $time_layouts{$tk}{times};
-				for(my $src_idx = 0; $src_idx < scalar (@$data_array) - 1; $src_idx++ ) {
+				for(my $src_idx = 0; $src_idx < scalar (@$data_array) - 2; $src_idx++ ) {
 					
 					# first check if we have any actual data:
 					my $has_data = false;
@@ -311,18 +311,19 @@ sub compileForecastFromDWML($\%) {
 						}
 					}
 					if( $has_data eq true ) {
+						print STDERR $src_idx."\n";
 						my $cur_dt = $data_array->[$src_idx];
 						my $next_dt = $data_array->[$src_idx + 1];
 						
 						#use UTC for key
-						my $time_key = GeoJSON::create_time_slot($cur_dt, $next_dt);
+						my $time_key = GeoJSON::create_time_slot(%$feature,$cur_dt, $next_dt);
 
 						#also pass local time to make our lives easier
 						my $lt = $cur_dt->clone();
 						$lt->set_time_zone($time_zone);
 						
 						foreach my $info_key (keys %hc) {
-							$feature->{properties}{GeoJSON::FORECASTSERIES}{$time_key}{$info_key} = $hc{$info_key}{values}[$src_idx];
+							$feature->{properties}{+GeoJSON::FORECASTSERIES}{$time_key}{$info_key} = $hc{$info_key}{values}[$src_idx];
 						}
 					}
 					

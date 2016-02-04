@@ -57,19 +57,7 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
       zoom: 3,
       dragging: false,
       bounds: {},
-      forecastMarkers: [
-        {
-          id: "45,-75",
-          "type":"Feature",
-          "geometry": { "type": "Point", "coordinates": [45.0, -75.0] },
-          "properties" : 
-            { 
-              "icon": "http://forecast.weather.gov/newimages/medium/ra_sn50.png",
-              "place_description" : "Somewhere: 45, -75"
-            }
-         
-        }],
-     
+      
     },
     searchboxStart: {
       template: 'searchboxStart.tpl.html',
@@ -95,12 +83,29 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
           if (places.length == 0) {
             return;
           }
+          forecastService.addForecastForLocation(places[0].geometry.location.lat(), places[0].geometry.location.lng(), 0, 0, new Date() );
+           
 
           $scope.routePlaces[searchBox.ref] = places[0];
           $scope.calcRoute($scope.routePlaces);
         }
       }
     },
+    forecastMarkers: [
+        {
+          id: "45,-75",
+          "type":"Feature",
+          "geometry": { "type": "Point", "coordinates": [42.65, -83.3] },
+          "properties" : 
+            { 
+              "latitude": 42.65,
+              "longitude":-83.3,
+              "icon": "http://forecast.weather.gov/newimages/medium/ra_sn50.png",
+              "place_description" : "Somewhere: 45, -75"
+            }
+         
+        }],
+
 
     routePlaces: {
       start:null,
@@ -118,6 +123,8 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
     var directionsDisplay = new $scope.maps.DirectionsRenderer();
     directionsDisplay.setMap($scope.map.control.getGMap());
     
+    $scope.forecastMarkers = [];
+
     var request = {
       origin: routePlaces.start.geometry.location,
       destination: routePlaces.end.geometry.location,
@@ -137,14 +144,19 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
           for( var ii =0; ii < steps.length; ii++ ) {
             var step = steps[ii];
             //$log.debug(step);
-            forecastService.addForecastForLocation(step.lat_lngs[0].lat(), step.lat_lngs[0].lng(), step.duration.value, step.distance.value, "" );
+            var gj =  forecastService.addForecastForLocation(step.lat_lngs[0].lat(), step.lat_lngs[0].lng(), step.duration.value, step.distance.value, new Date() );
+            $scope.forecastMarkers.push(gj);
           }
   
           // start working on the weather
         }
       });
-    return;
   };
+ /* $scope.$watch('forecastMarkers', function() {
+         $log.debug("watching...");
+         $log.debug($scope.forecastMarkers);
+           
+    }, true);*/
 }])
 
 .service('forecastService', function($http, $q, pointForecast) {
@@ -154,7 +166,8 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
     var pointId = pointForecast.generateId(latitude, longitude);
     var pf = pointForecasts[pointId];
     if( pf !== undefined ) {
-      pf.timeOffset = timeOffset;
+      pf.duration = duration;
+      pf.distance=distance;
     }
     else {
 
@@ -166,6 +179,7 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
       return pf.createGeoJSONForDepartureTime(departureTime);
     }
 
+    return pf.fetchGeoJSON;
   }
 
 
@@ -191,15 +205,19 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
   }
 
   pointForecast.generateId = function(latitude, longitude) {
-      return latitude.toString() + "," + longitude.toString();
+      $log.debug(latitude*1000 +longitude);
+      return latitude*1000 +longitude;
   };
 
   // create a geoJSON object which contains forecast data for 
   // this location, given the specified departure time
   pointForecast.prototype.createGeoJSONForDepartureTime = function(departureTime) {
-    var geoJSON = {"type" : "Feature", "id":this.id, "properties": { "icon":"", departureTime: departureTime, arrivalTime: ""}};
+    var arrivalTime = new Date();
+    arrivalTime.setTime(departureTime.getTime() + this.duration * 1000);
+    var geoJSON = {"type" : "Feature", "id":this.id, 
+        "properties": { "icon":"", "departureTime": departureTime, "arrivalTime": arrivalTime, "latitude":this.latitude,"longitude":this.longitude }};
     geoJSON.geometry = { "type": "Point",  "coordinates": [this.latitude, this.longitude]};
-    geoJSON.properties.icon = "http://www.worldblock.com/sites/default/files/map-marker.png";
+    geoJSON.properties.icon = "http://forecast.weather.gov/images/wtf/small/ovc.png";
 
     if( this.isCurrent ) {
       this.updateGeoJSON(geoJSON);
@@ -211,7 +229,7 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
     }
     else {
       this.fetchGeoJSON = geoJSON;
-      this.get_NWS_GML_Forecast(departureTime);
+      this.get_NWS_Forecast(departureTime);
     }
     return geoJSON;
   }
@@ -220,7 +238,55 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
   // assemble into geoJSON.properties
   pointForecast.prototype.updateGeoJSON = function(geoJSON) {
 
+
+
+    var dtime_string = geoJSON.properties.arrivalTime.toISOString();
+
+     $log.debug(dtime_string);
+    if( this.forecastGeoJSON !== undefined && this.forecastGeoJSON.properties !== undefined && this.forecastGeoJSON.properties.forecastSeries !== undefined){
+      for( var timekey in this.forecastGeoJSON.properties.forecastSeries) {
+        if( dtime_string >= timekey  && dtime_string < this.forecastGeoJSON.properties.forecastSeries[timekey]['timeend_utc']) {
+          $log.debug(timekey);
+          geoJSON.properties.icon = this.forecastGeoJSON.properties.forecastSeries[timekey]['weather-icon'];
+          geoJSON.properties.weather = this.forecastGeoJSON.properties.forecastSeries[timekey]['weather-summary'];
+          $log.debug(geoJSON.properties.arrivalTime.toString());
+          $log.debug(this.forecastGeoJSON.geometry.coordinates);
+          $log.debug(this.forecastGeoJSON.properties.forecastSeries[timekey]['weather-icon']);
+          $log.debug(this.forecastGeoJSON.properties.forecastSeries[timekey]['weather-summary']);
+
+        }
+
+      }
+    }
+   
   }
+  // get the National Weather Service gml forecast
+  pointForecast.prototype.get_NWS_Forecast = function(departureTime) {
+
+    var me = this;
+    var url = "/cgi-bin/nws_forecast.pl";
+    $http.get(url, {
+            params: { lat: me.latitude, lon : me.longitude }
+        })
+          .then(function(response) {
+              if (typeof response.data === 'object') {
+                  me.isCurrent = true;
+                  me.forecastGeoJSON = response.data.features;
+                  if( me.fetchGeoJSON !== undefined ) {
+                    me.updateGeoJSON(me.fetchGeoJSON);
+                  }
+              } else {
+                  // invalid response
+                  return $q.reject(response.data);
+              }
+
+          }, function(response) {
+              // something went wrong
+              return $q.reject(response.data);
+          });
+
+  }
+
 
   // get the National Weather Service gml forecast
   pointForecast.prototype.get_NWS_GML_Forecast = function() {

@@ -1,4 +1,4 @@
-#!/usr/bin/perl	
+#!"\Dwimperl\perl\bin\perl.exe"
  
 # geojson
 #
@@ -33,7 +33,7 @@ use constant {
 	TIMEEND_UTC => 'timeend_utc',
 };
 use constant {
-	NWSICONDIR => 'http://forecast.weather.gov/images/wtf/'
+	NWSICONDIR => 'http://forecast.weather.gov/images/wtf/small/'
 };
 
 #initalize geojson freature
@@ -66,6 +66,9 @@ sub create_time_slot(\%$$) {
 	my $start_date = shift;
 	my $end_date = shift;
 
+	if( not defined($end_date) ) {
+		$end_date = DateTime->from_epoch(epoch => $start_date->epoch() + 60*60);
+	}
 	my $time_key = $start_date->iso8601().",". $end_date->iso8601();
 
 	$feature->{properties}{+FORECASTSERIES}{$time_key}{+TIMESTART_UTC} = $start_date->iso8601();

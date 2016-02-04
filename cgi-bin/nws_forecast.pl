@@ -1,5 +1,5 @@
-#!/usr/bin/perl	
- 
+#!"\Dwimperl\perl\bin\perl.exe"
+# 
 # nws_forecast
 #   Returns an hourly forecast for given lat,lon 72 hours from the given time
 #   Returns geoJSON FeatureCollection containing Feature for lat,lon 
@@ -83,11 +83,19 @@ if (defined($ENV) && $ENV{'REQUEST_METHOD'} ne "GET")
 	exit;
 }
 
+
+my @names = $query->param();
+my @nvals;
+foreach my $n (@names) {
+	push(@nvals,$query->param($n));
+}
+
 #gather the latitude and longitude
 my $lat = $query->param('lat');
 my $lon = $query->param('lon');
 
-if (! defined($ENV) ) {
+#command line
+if (not (defined($lat) && defined($lon)) ) {
 	($lat, $lon) = 	@ARGV;
 }
 
@@ -120,6 +128,8 @@ print $query->header(-type=>'application/json',-expires=>'+1h');
 
 # create our solitary feature
 my $feature = GeoJSON::create_feature($lat,$lon);
+$feature->{properties}{'names'} = \@names;
+$feature->{properties}{'vals'} = \@nvals;
 
 #create our useragent
 my $ua = LWP::UserAgent->new;
@@ -153,8 +163,9 @@ if ($res->is_success) {
 		if( defined($unixTimeArray) ) {
 		
 			for( my $tidx = 0; $tidx < scalar  (@$unixTimeArray); $tidx++) {
-				my $sdt = DateTime->from_epoch(epoch => $unixTimeArray->[$tidx] );
-				my $edt = DateTime->from_epoch(epoch => 60 * 60 + $unixTimeArray->[$tidx] );
+				$utime = $unixTimeArray->[$tidx] ;
+				my $sdt = DateTime->from_epoch(epoch => $utime );
+				my $edt = DateTime->from_epoch(epoch => 60 * 60 + $utime );
 		
 				my $time_key = GeoJSON::create_time_slot(%$feature, $sdt, $edt);
 
@@ -186,7 +197,7 @@ $req_str = "http://graphical.weather.gov/xml/sample_products/browser_interface/n
 
 # fetch temp, weather icons, weather text, and hazards
 #$req_str =  $req_str."&temp=temp&wx=wx&icons=icons&wwa=wwa";
-$req_str =  $req_str."&wwa=wwa";
+$req_str =  $req_str."&temp=temp&wx=wx&wwa=wwa";
 
 # at our location
 $req_str = $req_str."&listLatLon=".$lat.",".$lon;#."&begin=".$time_utc;
