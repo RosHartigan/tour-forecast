@@ -1,21 +1,12 @@
 
-var mapApp = angular.module('tour-forecast-app', ['uiGmapgoogle-maps'])
+var mapApp = angular.module('tour-forecast-app', ['uiGmapgoogle-maps', 'forecast-module'])
 
-.config(['uiGmapGoogleMapApiProvider', '$httpProvider', function (GoogleMapApi, $httpProvider) {
+.config(['uiGmapGoogleMapApiProvider', '$httpProvider', function (GoogleMapApi) {
   GoogleMapApi.configure({
 //    key: 'your api key',
     // v: '3.20',
     libraries: 'drawing,geometry,visualization,places'
   });
-          $httpProvider.defaults.useXDomain = true;
-
-          /**
-           * Just setting useXDomain to true is not enough. AJAX request are also
-           * send with the X-Requested-With header, which indicate them as being
-           * AJAX. Removing the header is necessary, so the server is not
-           * rejecting the incoming request.
-           **/
-          delete $httpProvider.defaults.headers.common['X-Requested-With'];
 }])
 
 // Enable AngularJS to send its requests with the appropriate CORS headers
@@ -30,6 +21,7 @@ var mapApp = angular.module('tour-forecast-app', ['uiGmapgoogle-maps'])
 function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
 
  $log.currentLevel = $log.LEVELS.debug;
+
  GoogleMapApi.then(function(maps) {
     $scope.googleVersion = maps.version;
     maps.visualRefresh = true;   
@@ -46,7 +38,7 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
       
       center: {
         latitude: 45,
-        longitude: -73
+        longitude: -93
       },
       options: {
         streetViewControl: false,
@@ -54,7 +46,7 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
         maxZoom: 20,
         minZoom: 3
       },
-      zoom: 3,
+      zoom: 4,
       dragging: false,
       bounds: {},
       
@@ -75,7 +67,6 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
       
     },
     searchbox: {
-      //parentdiv:'searchBoxParent',
       events: {
         places_changed: function (searchBox) {
           places = searchBox.getPlaces()
@@ -83,29 +74,14 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
           if (places.length == 0) {
             return;
           }
-          forecastService.addForecastForLocation(places[0].geometry.location.lat(), places[0].geometry.location.lng(), 0, 0, new Date() );
-           
-
+          
           $scope.routePlaces[searchBox.ref] = places[0];
           $scope.calcRoute($scope.routePlaces);
         }
       }
     },
-    forecastMarkers: [
-        {
-          id: "45,-75",
-          "type":"Feature",
-          "geometry": { "type": "Point", "coordinates": [42.65, -83.3] },
-          "properties" : 
-            { 
-              "latitude": 42.65,
-              "longitude":-83.3,
-              "icon": "http://forecast.weather.gov/newimages/medium/ra_sn50.png",
-              "place_description" : "Somewhere: 45, -75"
-            }
-         
-        }],
-
+    forecastMarkers: [],
+    watchPoints: [],
 
     routePlaces: {
       start:null,
@@ -120,11 +96,10 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
     if( routePlaces.start === null || routePlaces.end === null ) {
       return;
     }
+
     var directionsDisplay = new $scope.maps.DirectionsRenderer();
     directionsDisplay.setMap($scope.map.control.getGMap());
     
-    $scope.forecastMarkers = [];
-
     var request = {
       origin: routePlaces.start.geometry.location,
       destination: routePlaces.end.geometry.location,
@@ -134,220 +109,52 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
     var directionsService = new $scope.maps.DirectionsService();
     directionsService.route(request, function(directionResult, status) {
       if (status == $scope.maps.DirectionsStatus.OK) {
+
+           $scope.forecastMarkers = [];
+
           // display the directions
           directionsDisplay.setPanel(document.getElementById("directionSteps"));
           directionsDisplay.setDirections(directionResult);
 
           var myRoute = directionResult.routes[0].legs[0];
           var steps = myRoute.steps;
+          
+          var travelSecs = 0; // in seconds
+          var distanceMeters = 0; // in meters
+          var departureTime = new Date();
+          
+          var lastTime = 0;
+          var lastDistance = 0;
 
           for( var ii =0; ii < steps.length; ii++ ) {
             var step = steps[ii];
-            //$log.debug(step);
-            var gj =  forecastService.addForecastForLocation(step.lat_lngs[0].lat(), step.lat_lngs[0].lng(), step.duration.value, step.distance.value, new Date() );
-            $scope.forecastMarkers.push(gj);
+            
+            if( ii === 0 || lastTime <= travelSecs - 60*60 || lastDistance <= distanceMeters - 100*1000  ) {  
+              var gj = forecastService.createGeoJSONInstance(step.lat_lngs[0].lat(), step.lat_lngs[0].lng(),departureTime, distanceMeters, travelSecs);
+              $log.debug(ii + " " + travelSecs);
+              $scope.forecastMarkers.push(gj);
+              lastTime = travelSecs;
+              lastDistance = distanceMeters;
+            }
+            distanceMeters += step.distance.value;
+            travelSecs += step.duration.value;
           }
   
-          // start working on the weather
+          // now add end location
+          var gjend = forecastService.createGeoJSONInstance(myRoute.end_location.lat(), myRoute.end_location.lng(), departureTime, myRoute.distance.value, myRoute.duration.value);
+          $log.debug(gjend);
+          $scope.forecastMarkers.push(gjend);
+             
+        }
+        else {
+           $scope.forecastMarkers = [];
         }
       });
   };
- /* $scope.$watch('forecastMarkers', function() {
+ /* $scope.$watch('watchPoints', function(ov,nv) {
          $log.debug("watching...");
          $log.debug($scope.forecastMarkers);
            
     }, true);*/
 }])
 
-.service('forecastService', function($http, $q, pointForecast) {
-  var pointForecasts = [];
-
-  this.addForecastForLocation = function(latitude, longitude, duration, distance, departureTime) {
-    var pointId = pointForecast.generateId(latitude, longitude);
-    var pf = pointForecasts[pointId];
-    if( pf !== undefined ) {
-      pf.duration = duration;
-      pf.distance=distance;
-    }
-    else {
-
-      pf = new pointForecast(latitude, longitude, duration, distance);
-      pointForecasts[location.toString()] = pf;
-    }
-
-    if( pf.isCurrent === false ) {
-      return pf.createGeoJSONForDepartureTime(departureTime);
-    }
-
-    return pf.fetchGeoJSON;
-  }
-
-
-  // fetch the foreast and store it in the geoJSON associated with the point
-  this.getDWMLForecast = function(location) {
-
-  }
-
-    
-})
-.factory('pointForecast', function ($http, $q, $log) {
-  // constructor
-  function pointForecast(latitude, longitude, duration, distance) {
-    this.latitude = latitude;
-    this.longitude = longitude;
-    this.id = pointForecast.generateId(latitude,longitude);
-    this.duration = duration;
-    this.distance = distance;
-    this.isCurrent = false;
-    this.forecast = {};
-
-    return this;
-  }
-
-  pointForecast.generateId = function(latitude, longitude) {
-      $log.debug(latitude*1000 +longitude);
-      return latitude*1000 +longitude;
-  };
-
-  // create a geoJSON object which contains forecast data for 
-  // this location, given the specified departure time
-  pointForecast.prototype.createGeoJSONForDepartureTime = function(departureTime) {
-    var arrivalTime = new Date();
-    arrivalTime.setTime(departureTime.getTime() + this.duration * 1000);
-    var geoJSON = {"type" : "Feature", "id":this.id, 
-        "properties": { "icon":"", "departureTime": departureTime, "arrivalTime": arrivalTime, "latitude":this.latitude,"longitude":this.longitude }};
-    geoJSON.geometry = { "type": "Point",  "coordinates": [this.latitude, this.longitude]};
-    geoJSON.properties.icon = "http://forecast.weather.gov/images/wtf/small/ovc.png";
-
-    if( this.isCurrent ) {
-      this.updateGeoJSON(geoJSON);
-    }
-    else {
-      return this.get_NWS_Forecast(departureTime, geoJSON);
-    }
-    return geoJSON;
-  }
-
-  // gather all the forecast data for the right time for this point, 
-  // assemble into geoJSON.properties
-  pointForecast.prototype.updateGeoJSON = function(geoJSON) {
-
-
-
-    var dtime_string = geoJSON.properties.arrivalTime.toISOString();
-
-     $log.debug(dtime_string);
-    if( this.forecastGeoJSON !== undefined && this.forecastGeoJSON.properties !== undefined && this.forecastGeoJSON.properties.forecastSeries !== undefined){
-      for( var timekey in this.forecastGeoJSON.properties.forecastSeries) {
-        if( dtime_string >= timekey  && dtime_string < this.forecastGeoJSON.properties.forecastSeries[timekey]['timeEndUTC']) {
-          $log.debug(timekey);
-          geoJSON.properties.icon = this.forecastGeoJSON.properties.forecastSeries[timekey]['weatherIcon'];
-          geoJSON.properties.weather = this.forecastGeoJSON.properties.forecastSeries[timekey]['weatherSummary'];
-          $log.debug(geoJSON.properties.arrivalTime.toString());
-          $log.debug(this.forecastGeoJSON.geometry.coordinates);
-          $log.debug(this.forecastGeoJSON.properties.forecastSeries[timekey]['weatherIcon']);
-          $log.debug(this.forecastGeoJSON.properties.forecastSeries[timekey]['weatherSummary']);
-
-        }
-
-      }
-    }
-   
-  }
-  // get the National Weather Service gml forecast
-  pointForecast.prototype.get_NWS_Forecast = function(departureTime, geoJSON) {
-
-    var me = this;
-    var url = "/cgi-bin/nws_forecast.pl";
-    $http.get(url, {
-            params: { lat: me.latitude, lon : me.longitude }
-        })
-          .then(function(response) {
-              if (typeof response.data === 'object') {
-                  me.isCurrent = true;
-                  me.forecastGeoJSON = response.data;
-                  me.updateGeoJSON(geoJSON);
-                  return geoJSON;
-                  
-              } else {
-                  // invalid response
-                  return $q.reject(response.data);
-              }
-
-          }, function(response) {
-              // something went wrong
-              return $q.reject(response.data);
-          });
-
-  }
-
-
-  // get the National Weather Service gml forecast
-  pointForecast.prototype.get_NWS_GML_Forecast = function() {
-
-    var url = "/nws_gml/xml/sample_products/browser_interface/ndfdXMLclient.php?gmlListLatLon=" + this.id + "&featureType=Forecast_Gml2Point&startTime=2013-02-28T19:14:00&compType=Between&propertyName=icons,wx";
-    $http.get(url)
-          .then(function(response) {
-              if (typeof response.data === 'string') {
-                  this.isCurrent = true;
-
-                  var gmlDoc;
-                  if (window.DOMParser)
-                    {
-                      parser=new DOMParser();
-                      gmlDoc=parser.parseFromString(response.data,"text/xml");
-                    }
-                  else // Internet Explorer
-                    {
-                      gmlDoc=new ActiveXObject("Microsoft.XMLDOM");
-                      gmlDoc.async=false;
-                      gmlDoc.loadXML(response.data);
-                    }
-                  
-
-                    var forecasts = [];
-                    var features = gmlDoc.getElementsByTagName("app:Forecast_Gml2Point");
-                    for( var ff = 0; ff < features.length; ff++ ) {
-                      var weatherPhraseNode =  features[ff].getElementsByTagName("app:weatherPhrase").item(0);
-                      var weatherIconNode =  features[ff].getElementsByTagName("app:weatherIcon").item(0);
-                      
-                      var validStartTimes = features[ff].getElementsByTagName("app:validTime");
-                      for( var tt=0; tt < validStartTimes.length; tt++ ) {
-                        var timeKey = validStartTimes[tt].textContent;
-                        var timeObject = forecasts[timeKey];
-                        $log.debug(timeKey);                        
-                        if( timeObject === null || timeObject === undefined ) {
-                          timeObject = {};
-                          forecasts[timeKey] = timeObject;
-                        }
-                        if( weatherIconNode !== null ) {
-                          timeObject.weatherIcon = weatherIconNode.textContent;
-                          $log.debug(timeObject.weatherIcon);
-                        }
-                        if( weatherPhraseNode !== null ) {
-                          timeObject.weatherPhrase = weatherPhraseNode.textContent;
-                          $log.debug(timeObject.weatherPhrase);
-                        }
-                      }
-                    }
-                    $log.debug(validStartTimeArray);
-                  //var ol = 
-                  if( this.fetchGeoJSON !== undefined ) {
-                    this.fetchGeoJSON.properties.forecasts = forecasts;
-                    this.updateGeoJSON(this.fetchGEOJson);
-                  }
-              } else {
-                  // invalid response
-                  return $q.reject(response.data);
-              }
-
-          }, function(response) {
-              // something went wrong
-              return $q.reject(response.data);
-          });
-
-  }
-
-  return pointForecast;
-
-});
