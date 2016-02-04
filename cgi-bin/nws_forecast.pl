@@ -210,7 +210,7 @@ $req_str = "http://graphical.weather.gov/xml/sample_products/browser_interface/n
 
 # fetch temp, weather icons, weather text, and hazards
 #$req_str =  $req_str."&temp=temp&wx=wx&icons=icons&wwa=wwa";
-$req_str =  $req_str."&wwa=wwa";
+$req_str =  $req_str."&wx=wx&icons=icons&wwa=wwa";
 
 # at our location
 $req_str = $req_str."&listLatLon=".$lat.",".$lon;#."&begin=".$time_utc;

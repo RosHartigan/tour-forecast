@@ -27,7 +27,7 @@ use constant {
 # forecast series properties
 use constant {
 	WEATHERTEXT => 'weatherText',
-	WEATHERSUMMARY => 'weatherSmmary',
+	WEATHERSUMMARY => 'weatherSummary',
 	WEATHERICON => 'weatherIcon',
 	TEMPERATURE => 'temperature',
 	HAZARDS => 'hazards',
