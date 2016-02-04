@@ -84,19 +84,15 @@ if (defined($ENV) && $ENV{'REQUEST_METHOD'} ne "GET")
 }
 
 
-my @names = $query->param();
-my @nvals;
-foreach my $n (@names) {
-	push(@nvals,$query->param($n));
-}
-
 #gather the latitude and longitude
 my $lat = $query->param('lat');
 my $lon = $query->param('lon');
 
 #command line
+my $use_pretty = false;
+
 if (not (defined($lat) && defined($lon)) ) {
-	($lat, $lon) = 	@ARGV;
+	($use_pretty, $lat, $lon) = 	@ARGV;
 }
 
 # allow them to be undefined
@@ -128,8 +124,6 @@ print $query->header(-type=>'application/json',-expires=>'+1h');
 
 # create our solitary feature
 my $feature = GeoJSON::create_feature($lat,$lon);
-$feature->{properties}{'names'} = \@names;
-$feature->{properties}{'vals'} = \@nvals;
 
 #create our useragent
 my $ua = LWP::UserAgent->new;
@@ -144,44 +138,59 @@ my $json = JSON->new->allow_nonref;
 my $req_str = "http://forecast.weather.gov/MapClick.php?lg=english&FcstType=digitalJSON&lat=$lat&lon=$lon";
 my $req = HTTP::Request->new(GET => $req_str);
 my $res = $ua->request($req);
-if ($res->is_success) {
+my $bJsonSuccess = $res->is_success;
+if ($bJsonSuccess) {
 	my $json_string = $res->decoded_content;
 
-	my $jsonObject = $json->decode($json_string);
+	my $jsonObject = eval {
+		$json->decode($json_string);
+	};
 
-	my %fieldxfer = (
-		'temperature' => GeoJSON::TEMPERATURE,
-		'weather' => GeoJSON::WEATHERSUMMARY,
-		'iconLink' => GeoJSON::WEATHERICON
-		);
+	# report any error that stopped parsing
+	if( $@ ) {
+		$@ =~ s/at \/.*?$//s;               # remove module line number
+		print STDERR "\nERROR in JSON return:\n$@\n";
+		$bJsonSuccess = false;
+	}
+	else {
+	
+		my %fieldxfer = (
+			'temperature' => GeoJSON::TEMPERATURE,
+			'weather' => GeoJSON::WEATHERSUMMARY,
+			'iconLink' => GeoJSON::WEATHERICON
+			);
 
-	# loop through the time periods
-	foreach my $jkey (keys $jsonObject) {
-				
-		# each time period will have a 'unixtime' field that defines the hours
-		my $unixTimeArray = $jsonObject->{$jkey}{'unixtime'};
-		if( defined($unixTimeArray) ) {
-		
-			for( my $tidx = 0; $tidx < scalar  (@$unixTimeArray); $tidx++) {
-				$utime = $unixTimeArray->[$tidx] ;
-				my $sdt = DateTime->from_epoch(epoch => $utime );
-				my $edt = DateTime->from_epoch(epoch => 60 * 60 + $utime );
-		
-				my $time_key = GeoJSON::create_time_slot(%$feature, $sdt, $edt);
-
-				foreach $param (keys %fieldxfer) {
-					#print "  ".$fieldxfer{$param}."  ".$jsonObject->{$jkey}{$param}[$tidx]." ";
-					my $value = $jsonObject->{$jkey}{$param}[$tidx];
+		# loop through the time periods
+		foreach my $jkey (keys $jsonObject) {
 					
-					# not a real link - just a name in the nws icon bank
-					if( $param eq 'iconLink' && length($value) > 0) {
-						$value = GeoJSON::NWSICONDIR . $value;
+			# each time period will have a 'unixtime' field that defines the hours
+			my $unixTimeArray = $jsonObject->{$jkey}{'unixtime'};
+			if( defined($unixTimeArray) ) {
+			
+				for( my $tidx = 0; $tidx < scalar  (@$unixTimeArray); $tidx++) {
+					$utime = $unixTimeArray->[$tidx] ;
+					my $sdt = DateTime->from_epoch(epoch => $utime );
+					my $edt = DateTime->from_epoch(epoch => 60 * 60 + $utime );
+			
+					my $time_key = GeoJSON::create_time_slot(%$feature, $sdt, $edt);
+
+					foreach $param (keys %fieldxfer) {
+						my $value = $jsonObject->{$jkey}{$param}[$tidx];
+						
+						if( defined($value) ) {
+							# not a real link - just a name in the nws icon bank
+							if( $param eq 'iconLink' && length($value) > 0) {
+								$value = GeoJSON::NWSICONDIR . $value;
+							}
+							$feature->{'properties'}{GeoJSON::FORECASTSERIES}{$time_key}{$fieldxfer{$param}} = $value;
+						}
+						else {
+							$bJsonSuccess = false;
+						}		
 					}
-					$feature->{'properties'}{GeoJSON::FORECASTSERIES}{$time_key}{$fieldxfer{$param}} = $value;
 				}
 			}
-		}
-
+		}	
 	}
 }
 else {
@@ -192,12 +201,16 @@ else {
 	print STDERR $res->status_line."\n";
 }
 
+# try the digitalDWML
+if( not $bJsonSuccess ) {
+
+}
 #lastly the DWML time series product that returns warnanings
 $req_str = "http://graphical.weather.gov/xml/sample_products/browser_interface/ndfdXMLclient.php?product=time-series";
 
 # fetch temp, weather icons, weather text, and hazards
 #$req_str =  $req_str."&temp=temp&wx=wx&icons=icons&wwa=wwa";
-$req_str =  $req_str."&temp=temp&wx=wx&wwa=wwa";
+$req_str =  $req_str."&wwa=wwa";
 
 # at our location
 $req_str = $req_str."&listLatLon=".$lat.",".$lon;#."&begin=".$time_utc;
@@ -214,10 +227,10 @@ if ($res->is_success) {
 	$xml_string =~ s/\R[\t ]*//g;
 	
 	# initialize parser object and parse the string
-	$parser = new XML::LibXML;								 
+	$xml_parser = new XML::LibXML;								 
 	
 	my $doc = eval {
-		$parser->parse_string($xml_string);
+		$xml_parser->parse_string($xml_string);
 	};
 
 	# report any error that stopped parsing
@@ -228,24 +241,16 @@ if ($res->is_success) {
 		  	-type=>'text/plain',
 			-status=> '500 Malformed XML returned from graphical.weather.gov'
 		);
-		exit;
-		
+		exit;		
 	}
 	#glean our geoJSON forecast data from the DWML
 	NWS_DWML::compileForecastFromDWML($doc, %$feature);
 
-	my $featureCollection = {
-		type => "FeatureCollection",
-		features => ($feature)
-	};
-	
-	# now create our geoJSON FeatureCollection
 	# pretty print for shell
 	# and sort the hash by key
-	my $use_pretty = not defined($ENV);
-	my $pretty_printed = $json->pretty($use_pretty)->canonical->encode( $featureCollection );
+	my $json_printed = $json->pretty($use_pretty)->canonical->encode( $feature );
 
-	print $pretty_printed;
+	print $json_printed;
 }
 else {
 	print $query->header(

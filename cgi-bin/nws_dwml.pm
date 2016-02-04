@@ -44,6 +44,25 @@ sub compileForecastFromDWML($\%) {
 	
 	my ($lat, $lon) = GeoJSON::getLatLon(%$feature);
 
+	# creation date from head
+	foreach my $cdate ($doc->findnodes('/dwml/head/product/creation-date')) {
+		$feature->{properties}{'refresh'} = $cdate->getAttribute('refresh-frequency' );
+		$feature->{properties}{'creationDate'} = $cdate->textContent;
+	}
+
+	# other data source information from head
+	foreach my $pc ($doc->findnodes('/dwml/head/source')) {
+	
+		foreach my $disclaimer ($pc->findnodes('.//disclaimer') ) {
+			$feature->{properties}{'disclaimer'} = $disclaimer->textContent;
+		}
+		foreach my $credit ($pc->findnodes('.//credit') ) {
+			$feature->{properties}{'credit'} = $credit->textContent;
+		}
+		foreach my $creditLogo ($pc->findnodes('.//credit-logo') ) {
+			$feature->{properties}{'creditLogo'} = $creditLogo->textContent;
+		}	
+	}
 	#get the locations
 	my %locations;
 
@@ -73,6 +92,10 @@ sub compileForecastFromDWML($\%) {
 			}
 		}
 			
+		#creation date
+
+		#credits & logo
+
 		#only return the data for our point
 		if( index($lat,$location{'latititude'}) != -1 && index($lon,$location{'longitude'}) != -1  ) {
 			$locations{$lk} = \%location;
@@ -82,6 +105,7 @@ sub compileForecastFromDWML($\%) {
 	
 	#get the time layouts
 	my %time_layouts;
+	my $time_zone;
 
 	foreach my $time_layout ($doc->findnodes('/dwml/data/time-layout')) {
 		my $tk="no time key";
@@ -112,19 +136,18 @@ sub compileForecastFromDWML($\%) {
 		foreach my $t ($time_layout->findnodes('./start-valid-time') ) {
 			my $datetime_str = $t->textContent;
 			my $dt = DateTime::Format::ISO8601->parse_datetime( $datetime_str );
-			#print STDERR $datetime_str."\n";
+			
 			# check for errors here
 			# todo: use bLocal?
-			$time_zone = $dt->time_zone();
+			if( $bLocal ) {
+				$time_zone = $dt->time_zone();
+			}
 			$dt->set_time_zone('UTC');
 			
 			$time_layouts{$tk}{'times'}[$idx] = $dt;
 			$idx++;
 		}
-		# todo: should match nDD segment of time layout key
-#		$time_layouts{$tk}{ num_times } = $idx;		
-
-		#print STDERR Dumper $time_layouts{$tk};
+		
 	} 
 	
 	# create feature array for the featureCollection object	
@@ -132,7 +155,14 @@ sub compileForecastFromDWML($\%) {
 	# get weather parameters for each point (only expecting one point at the moment)
 	# get specific weather info for each time layout (expecting multiple)
 	foreach my $lk  (keys %locations) {
-		
+
+
+		$feature->{properties}{GeoJSON::AREADESCRIPTION} = $location{'area-description'};
+
+		# we're assuming we're only dealing with one point .... so there's only one time zone
+		if( defined ($time_zone)) {
+			$feature->{properties}{GeoJSON::TIMEZONE} = $time_zone->name();
+		}
 		foreach my $mwi ($doc->findnodes('/dwml/data/moreWeatherInformatione[@applicable-location="'.$lk.'"]')) {
 			$feature->{'properties'}{'moreWeatherInformation'} = $mwi->textContent;
 		}
@@ -311,7 +341,6 @@ sub compileForecastFromDWML($\%) {
 						}
 					}
 					if( $has_data eq true ) {
-						print STDERR $src_idx."\n";
 						my $cur_dt = $data_array->[$src_idx];
 						my $next_dt = $data_array->[$src_idx + 1];
 						

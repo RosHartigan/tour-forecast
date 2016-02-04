@@ -222,14 +222,8 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
     if( this.isCurrent ) {
       this.updateGeoJSON(geoJSON);
     }
-    else if (this.fetchGeoJSON !== undefined ) {
-      // just update the one we're waiting on
-      this.fetchGEOJson.departureTime = departureTime;
-      geoJSON = this.fetchGEOJson;
-    }
     else {
-      this.fetchGeoJSON = geoJSON;
-      this.get_NWS_Forecast(departureTime);
+      return this.get_NWS_Forecast(departureTime, geoJSON);
     }
     return geoJSON;
   }
@@ -245,14 +239,14 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
      $log.debug(dtime_string);
     if( this.forecastGeoJSON !== undefined && this.forecastGeoJSON.properties !== undefined && this.forecastGeoJSON.properties.forecastSeries !== undefined){
       for( var timekey in this.forecastGeoJSON.properties.forecastSeries) {
-        if( dtime_string >= timekey  && dtime_string < this.forecastGeoJSON.properties.forecastSeries[timekey]['timeend_utc']) {
+        if( dtime_string >= timekey  && dtime_string < this.forecastGeoJSON.properties.forecastSeries[timekey]['timeEndUTC']) {
           $log.debug(timekey);
-          geoJSON.properties.icon = this.forecastGeoJSON.properties.forecastSeries[timekey]['weather-icon'];
-          geoJSON.properties.weather = this.forecastGeoJSON.properties.forecastSeries[timekey]['weather-summary'];
+          geoJSON.properties.icon = this.forecastGeoJSON.properties.forecastSeries[timekey]['weatherIcon'];
+          geoJSON.properties.weather = this.forecastGeoJSON.properties.forecastSeries[timekey]['weatherSummary'];
           $log.debug(geoJSON.properties.arrivalTime.toString());
           $log.debug(this.forecastGeoJSON.geometry.coordinates);
-          $log.debug(this.forecastGeoJSON.properties.forecastSeries[timekey]['weather-icon']);
-          $log.debug(this.forecastGeoJSON.properties.forecastSeries[timekey]['weather-summary']);
+          $log.debug(this.forecastGeoJSON.properties.forecastSeries[timekey]['weatherIcon']);
+          $log.debug(this.forecastGeoJSON.properties.forecastSeries[timekey]['weatherSummary']);
 
         }
 
@@ -261,7 +255,7 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
    
   }
   // get the National Weather Service gml forecast
-  pointForecast.prototype.get_NWS_Forecast = function(departureTime) {
+  pointForecast.prototype.get_NWS_Forecast = function(departureTime, geoJSON) {
 
     var me = this;
     var url = "/cgi-bin/nws_forecast.pl";
@@ -271,10 +265,10 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
           .then(function(response) {
               if (typeof response.data === 'object') {
                   me.isCurrent = true;
-                  me.forecastGeoJSON = response.data.features;
-                  if( me.fetchGeoJSON !== undefined ) {
-                    me.updateGeoJSON(me.fetchGeoJSON);
-                  }
+                  me.forecastGeoJSON = response.data;
+                  me.updateGeoJSON(geoJSON);
+                  return geoJSON;
+                  
               } else {
                   // invalid response
                   return $q.reject(response.data);

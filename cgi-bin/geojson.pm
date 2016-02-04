@@ -19,18 +19,20 @@ use Data::Dumper qw(Dumper);
 # feature properties:
 use constant {
 	SOURCES => 'sources',
-	FORECASTSERIES => 'forecastSeries'
+	FORECASTSERIES => 'forecastSeries',
+	AREADESCRIPTION => 'areaDescription',
+	TIMEZONE => 'timeZone'
 };
 
 # forecast series properties
 use constant {
-	WEATHERTEXT => 'weather-text',
-	WEATHERSUMMARY => 'weather-summary',
-	WEATHERICON => 'weather-icon',
+	WEATHERTEXT => 'weatherText',
+	WEATHERSUMMARY => 'weatherSmmary',
+	WEATHERICON => 'weatherIcon',
 	TEMPERATURE => 'temperature',
 	HAZARDS => 'hazards',
-	TIMESTART_UTC => 'timestart_utc',
-	TIMEEND_UTC => 'timeend_utc',
+	TIMESTART_UTC => 'timeStartUTC',
+	TIMEEND_UTC => 'timeEndUTC',
 };
 use constant {
 	NWSICONDIR => 'http://forecast.weather.gov/images/wtf/small/'
@@ -49,11 +51,8 @@ sub create_feature($$) {
 		geometry => {
 			type => "Point",
 			coordinates => $latLonString
-		},
-		properties => {
-			'sources' => (),
-			'forecastSeries' => ()
 		}
+		
 	};
 
 	return $feature;
