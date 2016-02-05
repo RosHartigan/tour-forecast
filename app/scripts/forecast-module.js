@@ -98,11 +98,13 @@ angular.module('forecast-module',[]).service('forecastService', function($http, 
   // assemble into geoJSON.properties
   pointForecast.prototype.updateGeoJSONForecastNow = function(geoJSON, departureTime) {
 
+    // new departure time
     geoJSON.properties.departureTime = departureTime;
 
+    // corresponding updated arrival time
     var arrivalTime = new Date();
     arrivalTime.setTime(departureTime.getTime() + geoJSON.properties.travelSecs * 1000);
-    
+
     geoJSON.properties.arrivalTime = arrivalTime;
     
   
@@ -110,15 +112,17 @@ angular.module('forecast-module',[]).service('forecastService', function($http, 
 
     // this is the only way to signal a change to this angular/map/marker, apparently.
     geoJSON.id = -geoJSON.id;
-    geoJSON.weather = "No forecast available."
+    geoJSON.properties.weather = "No forecast available."
     geoJSON.properties.icon = "https://maps.gstatic.com/mapfiles/ms2/micons/white.png";
     
     if( this.forecastGeoJSON !== undefined && this.forecastGeoJSON.properties !== undefined && this.forecastGeoJSON.properties.forecastSeries !== undefined){
+      arrivalTime.setTimezoneOffset(parseInt(this.forecastGeoJSON.properties.timeZone));
+      geoJSON.properties.arrivalDisplay = arrivalTime.format("ddd, h:MM TT", false);
       for( var timekey in this.forecastGeoJSON.properties.forecastSeries) {
         if( dtime_string >= timekey  && dtime_string < this.forecastGeoJSON.properties.forecastSeries[timekey]['timeEndUTC']) {
           
           geoJSON.properties.icon = this.forecastGeoJSON.properties.forecastSeries[timekey]['weatherIcon'];
-          geoJSON.properties.weather = this.forecastGeoJSON.properties.forecastSeries[timekey]['weatherSmmary'];  
+          geoJSON.properties.weather = this.forecastGeoJSON.properties.forecastSeries[timekey]['weatherSummary'];  
         }
 
       }

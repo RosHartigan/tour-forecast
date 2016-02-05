@@ -21,8 +21,20 @@
 	     
 	      <div  id="searchboxEnd"></div>
 	    </div>
-      	<div class="weather-steps-container"></div>    
-      	<div id="directionSteps" class="direction-steps-container"></div>    
+      <div class="weather-steps-container">
+        <div class="row  weather-step" ng-repeat="model in forecastMarkers track by model.id">
+          <div class="col-sm-3">
+            <img class="img-responsive img-rounded" src="{{model.properties.icon}}" />
+          </div>
+          <div class="col-sm-9">
+            <div>{{model.properties.weather}}</div>
+            <div>{{model.properties.arrivalDisplay}}</div>
+            <div>{{model.properties.hazards}}</div>
+          </div>
+        </div> 
+      </div>    
+      	
+      <div id="directionSteps" class="direction-steps-container"></div>    
     </div>
 
     <div class="col-sm-8">
@@ -54,6 +66,8 @@
 <script type='text/javascript' src='./scripts/vendor/angular-bootstrap/ui-bootstrap.js'></script>
 <script type='text/javascript' src='./scripts/vendor/angular-simple-logger/angular-simple-logger.js'></script>
 <script type='text/javascript' src='./scripts/vendor/angular-google-maps/angular-google-maps.js'></script>
+<script type='text/javascript' src='./scripts/vendor/date.js'></script>
+<script type='text/javascript' src='./scripts/vendor/date.format.js'></script>
 <script type='text/javascript' src='./scripts/forecast-module.js'></script>
 <script type='text/javascript' src='./scripts/tour-forecast-app.js'></script>
 
