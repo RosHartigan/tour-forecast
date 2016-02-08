@@ -1,4 +1,10 @@
-angular.module('forecast-module',[]).service('forecastService', function($http, $q, pointForecast) {
+angular.module('forecast-module',[])
+
+
+// forecastService creates a library of lat/lon based forecasts
+// and provides helper functions which create a time specific
+// geoJSON object representing the forecast for a given lat/lon/time
+.service('forecastService', function(pointForecast) {
   var pointForecasts = [];
 
   this.getPointForecast = function(latitude, longitude) {
@@ -37,8 +43,18 @@ angular.module('forecast-module',[]).service('forecastService', function($http, 
 
     return geoJSON;   
   }
+
+  // get a date/time string for local time at lat/long
+  this.createPrettyLocalDateTime = function(latitude, longitude, dt) {
+     pf = this.getPointForecast(latitude, longitude);
+
+     return pf.createPrettyLocalDateTime(dt);
+
+  }  
 })
-.factory('pointForecast', function ($http, $q, $log) {
+// pointForecast creates individual points with 5 day forecasts loaded from NWS
+// It also updates a geoJSON object from those point forecasts for a particular time
+.factory('pointForecast', function ($http, $q, $log, forecastIconService) {
   
   
   // constructor
@@ -52,26 +68,30 @@ angular.module('forecast-module',[]).service('forecastService', function($http, 
     return this;
   }
 
+  // get our uniquey key for the library
   pointForecast.generateKey = function(latitude, longitude) {
 
       return ""+latitude+","+longitude;     
   };
 
   // create a geoJSON object which contains forecast data for 
-  // this location, given the specified departure time
+  // this location, given specified departure time and time to arrive
   var curId = 1;
   pointForecast.prototype.createGeoJSONInstance = function(departureTime, distance, travelSecs) {
     
-    
-    var geoJSON = {"type" : "Feature", "id": curId++, 
-        "properties": { "key": pf.key,
-                        "travelSecs": travelSecs, "distance": distance, 
-                        "latitude":this.latitude,"longitude":this.longitude }};
+    var geoJSON = {
+      "type" : "Feature", "id": curId++, 
+      "properties": { "key": pf.key,
+                      "travelSecs": travelSecs, 
+                      "distance": distance, 
+                      "latitude":this.latitude,
+                      "longitude":this.longitude
+                       }};
     
     geoJSON.geometry = { "type": "Point",  "coordinates": [this.latitude, this.longitude]};
     
     // thse are the properties that will change over the lifetime of this marker
-    geoJSON.properties.options = {'icon':"https://maps.gstatic.com/mapfiles/ms2/micons/green.png"};
+    geoJSON.properties.icon = "https://maps.gstatic.com/mapfiles/ms2/micons/green.png";
     geoJSON.properties.weather = "Fetching Forecast..." 
 
     // update, probably asynchronously
@@ -93,63 +113,53 @@ angular.module('forecast-module',[]).service('forecastService', function($http, 
 
     geoJSON.properties.arrivalTime = arrivalTime;
     
-  
-    var dtime_string = geoJSON.properties.arrivalTime.toISOString();
-
-    // this is the only way to signal a change to this angular/map/marker, apparently.
-    //geoJSON.id = -geoJSON.id;
     geoJSON.properties.weather = "No forecast available."
-    geoJSON.properties.options = {'icon':"https://maps.gstatic.com/mapfiles/ms2/micons/white.png"};
+    geoJSON.properties.icon = "https://maps.gstatic.com/mapfiles/ms2/micons/blue.png";
     
-    if( this.forecastGeoJSON !== undefined && this.forecastGeoJSON.properties !== undefined && this.forecastGeoJSON.properties.forecastSeries !== undefined){
-      
+    if( this.forecastGeoJSON !== undefined && this.forecastGeoJSON.properties !== undefined ){
+        
+      var srcProps = this.forecastGeoJSON.properties;
 
       // create time display in time zone of current step
-      var arrivalTimeForDisplay = arrivalTime;
+      geoJSON.properties.arrivalDisplay = this.createPrettyLocalDateTime(arrivalTime);
 
-      // can't really set the timezone for Date, so we have to fake out UTC ....
-      if( this.forecastGeoJSON.properties.timeZoneOffset !== undefined ) {
-        var tzSecs = parseInt(this.forecastGeoJSON.properties.timeZoneOffset);
-          
-        arrivalTimeForDisplay = new Date();
-        arrivalTimeForDisplay.setTime(arrivalTime.getTime() + tzSecs *1000);                
-      }
+      // add area description if we have it
+      var areaDescription = srcProps.areaDescription;
 
-      try {
-        geoJSON.properties.arrivalDisplay = arrivalTimeForDisplay.format("ddd, h:MM tt", true);
-
-        if ( this.forecastGeoJSON.properties.timeZoneAbbr !== undefined ) {
-          geoJSON.properties.arrivalDisplay += " " + this.forecastGeoJSON.properties.timeZoneAbbr;
-
+      // check for weird NWS repeat in the place
+      if( areaDescription ) {
+        var dp = areaDescription.split(" and ");
+        if( dp.length === 2 && dp[0] === dp[1]) {
+          areaDescription = dp[0];
         }
       }
-      catch (e) { 
-        $log.debug("can't parse this?? " +arrivalTime.toLocaleString());
-        geoJSON.properties.arrivalDisplay = arrivalTime.toLocaleString();
-      }
+
+      geoJSON.properties.areaDescription = areaDescription;
       
-      // add area description if we have it
-      if ( this.forecastGeoJSON.properties.areaDescription !== undefined ) {
-        geoJSON.properties.areaDescription = this.forecastGeoJSON.properties.areaDescription;
-      }
-      
-      // add area description if we have it
-      if ( this.forecastGeoJSON.properties.moreWeatherInfo !== undefined ) {
-        geoJSON.properties.moreWeatherInfo = this.forecastGeoJSON.properties.moreWeatherInfo;
+      // add link to more info if we have it
+      if ( srcProps.moreWeatherInfo !== undefined ) {
+        geoJSON.properties.moreWeatherInfo = srcProps.moreWeatherInfo;
       }
       else {
         geoJSON.properties.moreWeatherInfo = 'http://www.weather.gov/';
       }
-      
-      for( var timekey in this.forecastGeoJSON.properties.forecastSeries) {
-        if( dtime_string >= timekey  && dtime_string < this.forecastGeoJSON.properties.forecastSeries[timekey]['timeEndUTC']) {
+  
+      // get the forecast for this time slot    
+      var dtime_string = geoJSON.properties.arrivalTime.toISOString();
+      for( var timekey in srcProps.forecastSeries) {
+        if( dtime_string >= timekey  && dtime_string < srcProps.forecastSeries[timekey]['timeEndUTC']) {
           
+          // icon
+          geoJSON.properties.icon = forecastIconService.swapIcon(srcProps.forecastSeries[timekey]['weatherIcon'], 'nws', 'weather.com', 'a');
+          
+          // weather summary
+          geoJSON.properties.weather = srcProps.forecastSeries[timekey]['weatherSummary'];  
 
-          geoJSON.properties.options = {'icon':this.swapIcon(this.forecastGeoJSON.properties.forecastSeries[timekey]['weatherIcon'])};
-          geoJSON.properties.weather = this.forecastGeoJSON.properties.forecastSeries[timekey]['weatherSummary'];  
+          // temp
+          // todo
 
-          geoJSON.properties.hazards = this.forecastGeoJSON.properties.forecastSeries[timekey]['hazards']; 
-         
+          // hazards
+          geoJSON.properties.hazards = srcProps.forecastSeries[timekey]['hazards'];           
         }
 
       }
@@ -159,78 +169,46 @@ angular.module('forecast-module',[]).service('forecastService', function($http, 
    
   }
 
-  pointForecast.prototype.swapIcon = function(icon) {
+  // create a short displayable day/time string in time LOCAL to this point
+  // include timezone desc if different
+  pointForecast.prototype.createPrettyLocalDateTime = function(dt) {
 
-    var translatedIcon = icon;
-
+    var displayString = "";
+    var tzSecs = 0;
     try {
-      var nws_weatherunderground_map = {
-        'fg': 'fog',
-        'sctfg': 'fog',
-        'nfg': 'nt_fog',
-        'nbknfg': 'nt_fog',
-        'blizzard': 'snow',
-        'du': 'hazy',
-        'ndu': 'nt_hazy',
-        'hz': 'hazy',
-        'fu': 'hazy',
-        'nfu': 'nt_hazy',
-        'ip': 'sleet',
-        'hi_shwrs': 'chancerain',
-        'hi_nshwrs': 'nt_changerain',
-        'shra': 'rain',
-        'shra1': 'rain',
-        'shra2': 'rain',
-        'nra': 'nt_rain',
-        'ra': 'rain',
-        'nsn': 'nt_snow',
-        'sn': 'snow',
-        'rasn': 'snow',
-        'nrasn': 'nt_snow',
-        'fzra': 'sleet',
-        'mix': 'sleet',
-        'raip': 'sleet',
-        'nraip': 'nt_sleet',    
-        'tsra': 'tstorms',
-        'scttsra': 'tstorms',
-        'ntsra': 'nt_tstorms',
-        'nscttsra': 'nt_tstorms',
-        'skc': 'mostlysunny',
-        'few': 'partlysunny',
-        'sct': 'partlycloudy',
-        'bkn': 'mostlycloudy',
-        'ovc': 'cloudy',
-        'nskc': 'nt_clear',
-        'nfew': 'nt_partlycloudy',
-        'nsct': 'nt_partlycloudy',
-        'nbkn': 'nt_mostlycloudy',
-        'novc': 'nt_cloudy',
-        'hot': 'clear',
-        'cold': 'clear',
-        'wind': 'clear',
-        'nwind': 'nt_clear',
-        'tor': 'tstorms',
-        'fc': 'tstorms',
-        'ntor': 'nt_tstorms',
-        'nfc': 'nt_tstorms'
-      };
+      tzSecs = - dt.getTimezoneOffset() * 60;
+      tzSecs = parseInt(this.forecastGeoJSON.properties.timeZoneOffset);  
+    }
+    catch (e) {
 
-      var iconPieces = icon.split('/');
-      var iconName = iconPieces.pop();
-      var iconNamePieces = iconName.split('.');
-      var iconRoot = iconNamePieces[0];
+    }
 
-      var mappedIconRoot = nws_weatherunderground_map[iconRoot];
-      if( mappedIconRoot !== undefined ) {
-        translatedIcon = "http://icons.wxug.com/i/c/i/" + mappedIconRoot + ".gif";
+    // create time display in time zone of this point
+    try {
+      var dayTimeForDisplay = dt;
+      displayString = dt.toLocaleString();
+
+      // can't really set the timezone for Date, so we have to fake out UTC ....          
+      arrivalTimeForDisplay = new Date();
+      arrivalTimeForDisplay.setTime(dt.getTime() + tzSecs * 1000);                
+    
+      displayString = arrivalTimeForDisplay.format("ddd, h:MM tt", true);
+
+      var tzmins = - tzSecs / 60;
+      if( tzmins !== dt.getTimezoneOffset() ) {
+          // it's not exactly correct to use THIS timezone to get daylight savings indicator 
+          // for another time zone, but it'll do pig
+          var tza =  Date.getTimezoneAbbreviation(tzSecs / 60, dt.isDaylightSavingTime());      
+          displayString += " " + tza;
+        }
       }
-    }
-    catch(e) {
-      $log.debug("No icon for " + icon);
-    }
+      catch (e) { 
+        $log.debug("Error in createPrettyLocalDateTime " + e);
+      }
 
-    return translatedIcon;
+      return displayString;
   }
+
   
   // gather all the forecast data for the right time for this point, if it exists:
   //  else fetch and update later. 
@@ -283,8 +261,106 @@ angular.module('forecast-module',[]).service('forecastService', function($http, 
           });
   }
 
-
-
   return pointForecast;
+
+})
+.service('forecastIconService', function(){
+    this.swapIcon = function(icon, fromSet, toSet, toSubset) {
+
+    var translatedIcon = icon;
+
+    if( fromSet === undefined ) {
+      fromSet = "nws";
+    }
+    if( toSet === undefined ) {
+      toSet = "weather.com";
+    }
+    if( toSubset === undefined ) {
+      toSubset = "i/";
+    }
+    else {
+      toSubset += "/";    
+    }
+
+    // no translation
+    if( fromSet === toSet ) {
+      return icon;
+    }
+
+
+    try {
+
+      var icon_map = {
+        "nws_weather.com": {
+        'fg': 'fog',
+        'sctfg': 'fog',
+        'nfg': 'nt_fog',
+        'nbknfg': 'nt_fog',
+        'blizzard': 'snow',
+        'du': 'hazy',
+        'ndu': 'nt_hazy',
+        'hz': 'hazy',
+        'fu': 'hazy',
+        'nfu': 'nt_hazy',
+        'ip': 'sleet',
+        'hi_shwrs': 'chancerain',
+        'hi_nshwrs': 'nt_changerain',
+        'shra': 'rain',
+        'shra1': 'rain',
+        'shra2': 'rain',
+        'nra': 'nt_rain',
+        'ra': 'rain',
+        'nsn': 'nt_snow',
+        'sn': 'snow',
+        'rasn': 'snow',
+        'nrasn': 'nt_snow',
+        'fzra': 'sleet',
+        'mix': 'sleet',
+        'raip': 'sleet',
+        'nraip': 'nt_sleet',    
+        'tsra': 'tstorms',
+        'scttsra': 'tstorms',
+        'ntsra': 'nt_tstorms',
+        'nscttsra': 'nt_tstorms',
+        'skc': 'sunny',
+        'few': 'sunny',
+        'sct': 'partlysunny',
+        'bkn': 'mostlycloudy',
+        'ovc': 'cloudy',
+        'nskc': 'nt_clear',
+        'nfew': 'nt_partlycloudy',
+        'nsct': 'nt_partlycloudy',
+        'nbkn': 'nt_mostlycloudy',
+        'novc': 'nt_cloudy',
+        'hot': 'sunny',
+        'cold': 'clear',
+        'wind': 'clear',
+        'nwind': 'nt_clear',
+        'tor': 'tstorms',
+        'fc': 'tstorms',
+        'ntor': 'nt_tstorms',
+        'nfc': 'nt_tstorms',
+        'default_rooturl': "http://icons.wxug.com/i/c/",
+        'default_ext': ".gif"
+        }
+      };
+
+      var iconPieces = icon.split('/');
+      var iconName = iconPieces.pop();
+      var iconNamePieces = iconName.split('.');
+      var iconRoot = iconNamePieces[0];
+
+      var map = icon_map[fromSet + "_" + toSet];
+      var mappedIconRoot = map[iconRoot];
+      if( mappedIconRoot !== undefined ) {
+        translatedIcon = map['default_rooturl'] + toSubset + mappedIconRoot +  map['default_ext'];
+      }
+    }
+    catch(e) {
+      $log.debug("No icon for " + icon);
+    }
+
+    return translatedIcon;
+  }
 
 });

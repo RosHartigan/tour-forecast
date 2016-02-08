@@ -60,8 +60,9 @@ sub create_feature($$) {
 			type => "Point",
 			coordinates => $latLonString
 		}
-		
 	};
+
+	$feature->{properties}{+SOURCES} = ();
 
 	return $feature;
 }

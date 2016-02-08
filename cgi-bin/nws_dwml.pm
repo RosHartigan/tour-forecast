@@ -305,10 +305,10 @@ sub compileForecastFromDWML($\%) {
 									}
 									
 									if( length($value) eq 0 ) {
-										$value = $hazard_url;
+										$value = {'url' => $hazard_url, 'text' => 'Hazardous Weather Warning'};
 									}
 									elsif( length($hazard_url) ne 0  ) {
-										$value = '<a href="'.$hazard_url.'">'.$value.'</a>'
+										$value = {'url' => $hazard_url, 'text' => $value};
 									}
 									push(@value_array,$value);
 								}

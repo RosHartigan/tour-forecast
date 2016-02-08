@@ -16,69 +16,68 @@
 
 <body ng-controller="tour-forecast-ctrl">
 <div class="container">
+<div class="row">
 
-  <div class="row">
-    <div class="col-sm-4">
-	    <div class="direction-points">
-	      <div  id="searchboxStart"></div>
-	     
-	      <div  id="searchboxEnd"></div>
-	    </div>
+  <div class="col-sm-4">
+    <div class="direction-points">
+      <div  id="searchboxStart"></div>
+     
+      <div  id="searchboxEnd"></div>
+    </div>
 
-      <div ng-show="forecastMarkers.length > 0" class="weather-steps-container" >
-      <div class="weather-steps-header">
-      <div>Route Forecast departing <strong>{{departureTimeDisplays[departureTimeIdx].display}}</strong></div>
-      <div class="timeslider">
-        <span slider
-            ng-model="departureTimeIdx"
-            tooltip="hide"
-            min = "0"
-            max = "departureTimeDisplays.length-1"
-            on-start-slide="slideDelegate(value, $event)"
-            on-slide="slideDelegate(value, $event)"
-            on-stop-slide="slideDelegate(value, $event)"
-              >
-        </span>
+    <div ng-show="forecastMarkers.length > 0" class="weather-steps-container" >
+      
+      <div class="weather-steps-header" ng-hide "forecastMarkers.length === 0">
+        <div>Route Forecast departing <strong>{{departureTimeDisplays[departureTimeIdx].display}}</strong></div>
+        <div class="timeslider">
+          <span slider
+              ng-model="departureTimeIdx"
+              tooltip="hide"
+              min = "0"
+              max = "departureTimeDisplays.length-1"
+              on-slide="slideDelegate(value, $event)"
+                >
+          </span>
+        </div>
       </div>
-      </div>
-        <div class="weather-step" ng-repeat="model in forecastMarkers track by model.id">
+      
+      <div class="weather-step" ng-repeat="model in forecastMarkers track by model.id">
+        <div class="placetext"><strong>{{model.properties.arrivalDisplay}}</strong> <em>{{model.properties.areaDescription}}</em></div>
           <div class="weathericon">
-            <a href="{{model.properties.moreWeatherInfo}}" target="_blank"><img class="img-rounded" src="{{model.properties.options.icon}}" /></a>
-          </div>
-          <div class="weathertext">
-            <div class="placetext"><strong>{{model.properties.arrivalDisplay}}</strong> <em>{{model.properties.areaDescription}}</em></div>
-            <div>{{model.properties.weather}}</div>
-            <div ng-bind-html="renderHazard(model.properties.hazards)"></div>
-          </div>
-        </div> 
-      </div>    
-      	
-      <div id="directionSteps" class="direction-steps-container"></div>    
-    </div>
-
-    <div class="col-sm-8">
-      <ui-gmap-google-map 
-        id="map-canvas"
-        center="map.center"
-        zoom="map.zoom"
-        draggable="true"
-        options="map.options"
-        control="map.control"
-      >
-       <ui-gmap-search-box parentdiv="'searchboxStart'" options="searchboxStart.options" template="searchboxStart.template"
-                            events="searchbox.events"></ui-gmap-search-box>
-       <ui-gmap-search-box parentdiv="'searchboxEnd'" options="searchboxEnd.options" template="searchboxEnd.template"
-                            events="searchbox.events"></ui-gmap-search-box>
-           
-
-        <ui-gmap-markers idKey="'id'" models="forecastMarkers" coords="'properties'" icon="'properties.options.icon'" doRebuildAll='true'>
-        </ui-gmap-markers>
-
-    
-	  </ui-gmap-google-map>
-    </div>
-
+          <a href="{{model.properties.moreWeatherInfo}}" target="_blank"><img class="img-rounded" src="{{model.properties.icon}}" /></a>
+        </div>
+        <div class="weathertext">
+          <div>{{model.properties.weather}}</div>
+          <div><span ng-repeat="hazard in model.properties.hazards"><a class="weatherhazard" href="{{hazard.url}}">{{hazard.text}}</a><span ng-hide="$last">, </span></span></div>
+        </div>
+      </div> 
+    </div>    
+    	
+    <div id="directionSteps" class="direction-steps-container"></div>    
   </div>
+
+  <div class="col-sm-8">
+    <ui-gmap-google-map 
+      id="map-canvas"
+      center="map.center"
+      zoom="map.zoom"
+      draggable="true"
+      options="map.options"
+      control="map.control"
+    >
+     <ui-gmap-search-box parentdiv="'searchboxStart'" options="searchboxStart.options" template="searchboxStart.template"
+                          events="searchbox.events"></ui-gmap-search-box>
+     <ui-gmap-search-box parentdiv="'searchboxEnd'" options="searchboxEnd.options" template="searchboxEnd.template"
+                          events="searchbox.events"></ui-gmap-search-box>
+         
+
+      <ui-gmap-markers idKey="'id'" models="forecastMarkers" coords="'properties'" icon="'properties.icon'" doRebuildAll='true'>
+      </ui-gmap-markers>
+  
+	  </ui-gmap-google-map>
+  </div>
+
+</div>
 </div>
 <script type='text/javascript' src='./scripts/vendor/lodash/lodash.js'></script>
 <script type='text/javascript' src='./scripts/vendor/angular/angular.js'></script>

@@ -136,9 +136,12 @@ my $json = JSON->new->allow_nonref;
 # first we try to use the experimental NWS product - digitalJSON
 #   http://forecast.weather.gov/MapClick.php?lg=english&FcstType=digitalJSON&lat=43.6389&lon=-83.291
 my $req_str = "http://forecast.weather.gov/MapClick.php?lg=english&FcstType=digitalJSON&lat=$lat&lon=$lon";
+push(@{$feature->{properties}{GeoJSON::SOURCES}}, $req_str);
+
 my $req = HTTP::Request->new(GET => $req_str);
 my $res = $ua->request($req);
 my $bJsonSuccess = $res->is_success;
+
 if ($bJsonSuccess) {
 	my $json_string = $res->decoded_content;
 
@@ -148,12 +151,13 @@ if ($bJsonSuccess) {
 
 	# report any error that stopped parsing
 	if( $@ ) {
-		$@ =~ s/at \/.*?$//s;               # remove module line number
 		print STDERR "\nERROR in JSON return:\n$@\n";
 		$bJsonSuccess = false;
+		push(@{$feature->{properties}{GeoJSON::SOURCES}}, $@);
 	}
 	else {
-	
+		push(@{$feature->{properties}{GeoJSON::SOURCES}}, $res->status_line);
+
 		my %fieldxfer = (
 			'temperature' => GeoJSON::TEMPERATURE,
 			'weather' => GeoJSON::WEATHERSUMMARY,
@@ -202,10 +206,7 @@ if ($bJsonSuccess) {
 	}
 }
 else {
-	print $query->header(
-	  	-type=>'text/plain',
-		-status=>  $res->status_line
-	);
+	push(@{$feature->{properties}{GeoJSON::SOURCES}}, $res->status_line);
 	print STDERR $res->status_line."\n";
 }
 
@@ -223,6 +224,8 @@ $req_str =  $req_str."&wx=wx&icons=icons&wwa=wwa";
 # at our location
 $req_str = $req_str."&listLatLon=".$lat.",".$lon;#."&begin=".$time_utc;
 
+# send source back
+push(@{$feature->{properties}{GeoJSON::SOURCES}}, $req_str);
 
 $req = HTTP::Request->new(GET => $req_str);
 $res = $ua->request($req);
@@ -245,15 +248,16 @@ if ($res->is_success) {
 	if( $@ ) {
 		$@ =~ s/at \/.*?$//s;               # remove module line number
 		print STDERR "\nERROR in xml return:\n$@\n";
-		print $query->header(
-		  	-type=>'text/plain',
-			-status=> '500 Malformed XML returned from graphical.weather.gov'
-		);
-		exit;		
-	}
-	#glean our geoJSON forecast data from the DWML
-	NWS_DWML::compileForecastFromDWML($doc, %$feature);
+		push(@{$feature->{properties}{GeoJSON::SOURCES}}, $@);
 
+	}
+	# otherwise parse away
+	else {
+		push(@{$feature->{properties}{GeoJSON::SOURCES}}, $res->status_line);
+
+		#glean our geoJSON forecast data from the DWML
+		NWS_DWML::compileForecastFromDWML($doc, %$feature);
+	}
 	# pretty print for shell
 	# and sort the hash by key
 	my $json_printed = $json->pretty($use_pretty)->canonical->encode( $feature );
@@ -261,10 +265,7 @@ if ($res->is_success) {
 	print $json_printed;
 }
 else {
-	print $query->header(
-	  	-type=>'text/plain',
-		-status=>  $res->status_line
-	);
+	push(@{$feature->{properties}{GeoJSON::SOURCES}}, $res->status_line);
 	print STDERR $res->status_line."\n";
 }
 

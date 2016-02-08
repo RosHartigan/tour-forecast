@@ -4,10 +4,14 @@ html, body {
   padding: 0px
 }
 
+.weather-steps-container {
+}
+
 .weather-steps-header {
-  margin: 10px 0 4px 0;
+  margin: 10px 0 0 0;
   padding: 5px;
-  border: 1px solid blue;
+  border: 1px lightblue;
+  border-bottom:0;
   background-color: lightblue;
 }
 
@@ -17,10 +21,10 @@ html, body {
 
 
 .weather-step {
-  padding-top: 2px;
   padding-bottom: 2px;
-  border-bottom: 1px solid #ddd;
   margin: 0;
+  border: 1px solid lightblue;
+  borer-top:0;
 }
 
 .weather-step .weathericon {
@@ -31,24 +35,19 @@ html, body {
   display:inline-block;
   padding-top:0;
   padding-left:4px;
-  width:75%;
+  vertical-align: middle;
 }
 
-.weather-step .weathertext  .timetext {
-  display:inline-block;
-  font-size:12px;
-  text-overflow: ellipsis;
-}
-
-.weather-step .weathertext  .placetext {
-  display:inline-block;
+.weather-step  .placetext {
   font-size:12px;
   text-overflow: ellipsis;
   overflow:hidden;
   white-space: nowrap;
+  background-color: #ddf;
+  padding: 2px;
 }
 
-.weather-step .weathertext .hazard {
+.weather-step .weathertext .weatherhazard {
   color: #A00000;
 }
 

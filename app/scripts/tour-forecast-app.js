@@ -17,16 +17,24 @@ var mapApp = angular.module('tour-forecast-app', ['uiGmapgoogle-maps', 'forecast
   $templateCache.put('searchboxEnd.tpl.html', '<input id="pac-input" class="pac-controls" type="text" placeholder="Destination">');
   $templateCache.put('window.tpl.html', '<div ng-controller="WindowCtrl" ng-init="showPlaceDetails(parameter)">{{place.name}}</div>');
 }])
-.controller("tour-forecast-ctrl",['$scope', '$timeout', 'uiGmapLogger','uiGmapGoogleMapApi', 'forecastService', '$sce',
-function ($scope, $timeout, $log,GoogleMapApi, forecastService, $sce) {
+.controller("tour-forecast-ctrl",['$scope', '$timeout', 'uiGmapLogger','uiGmapGoogleMapApi', 'forecastService',
+function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
 
  $log.currentLevel = $log.LEVELS.debug;
 
  GoogleMapApi.then(function(maps) {
     $scope.googleVersion = maps.version;
     maps.visualRefresh = true;   
+
     $scope.maps = maps;
 
+    $scope.directionsDisplay = new $scope.maps.DirectionsRenderer({
+        suppressMarkers: true
+    });
+    directionsDisplay.addListener('directions_changed', function() {
+      $scope.createWeatherSteps(directionsDisplay.getDirections());
+    });
+   
   });
   
   angular.extend($scope, {
@@ -37,8 +45,8 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService, $sce) {
       version: "uknown",
       
       center: {
-        latitude: 45,
-        longitude: -93
+        latitude: 39.5,
+        longitude: -98.35
       },
       options: {
         streetViewControl: false,
@@ -95,106 +103,55 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService, $sce) {
 
   });
 
-
+  // SLIDING TIME SELECTION
+  // build a list of possible departure times for the slider
   $scope.rebuildDepartureTimes = function () {
       
     $scope.departureTimeIdx = 0;
 
     $scope.departureTimeDisplays = [{'display':"now", 'dateObj':null}];
 
-    var now = Date.now();
-    now.setMinutes(0,0,0);
+    var nextTime = Date.now();
+    nextTime.setMinutes(0,0,0);
 
-    $scope.addDepartureTime(now, 2);
-    $scope.addDepartureTime(now, 3);
-    $scope.addDepartureTime(now, 3);
-    $scope.addDepartureTime(now, 3);
-    $scope.addDepartureTime(now, 3);
-    $scope.addDepartureTime(now, 6);
-    $scope.addDepartureTime(now, 6);
-    $scope.addDepartureTime(now, 6);
-    $scope.addDepartureTime(now, 6);
+    // also add the next few hours
+    $scope.addDepartureTime(nextTime, 1);
+    $scope.addDepartureTime(nextTime, 1);
+    $scope.addDepartureTime(nextTime, 1);
+    
+    // every three hours for the first 24, starting on the next multiple of 3
+    nextTime.setHours(nextTime.getHours() - nextTime.getHours() % 3);
+    for( var idx = 0; idx < 24; idx += 3 ) {
+      $scope.addDepartureTime(nextTime, 3);
+    }
 
+    // every 6 hours for the next 48
+    for( var idx = 0; idx < 42; idx += 6 ) {
+      $scope.addDepartureTime(nextTime, 6);
+    }
   };
 
+  // add a given departure time display and obj to the slider menu
   $scope.addDepartureTime = function(theDateTime, theHourOffset) {
 
-    theDateTime.add({ hours: theHourOffset});
-    var departureDisplay = "";
-    try {
-      // need to handle time zone information here
-      departureDisplay = theDateTime.format("ddd, h:MM tt");
-    }
-    catch (e) { 
-      departureDisplay = theDateTime.toLocaleString();
-    }
-    $scope.departureTimeDisplays.push({'display':departureDisplay, 'dateObj':new Date(theDateTime)});
-  }
-
-  // get google directions
-  $scope.calcRoute = function (routePlaces) {
-    if( routePlaces.start === null || routePlaces.end === null ) {
+    if( ! $scope.routePlaces.start ) {
       return;
     }
 
-    var directionsDisplay = new $scope.maps.DirectionsRenderer();
-    directionsDisplay.setMap($scope.map.control.getGMap());
-    
-    var request = {
-      origin: routePlaces.start.geometry.location,
-      destination: routePlaces.end.geometry.location,
-      travelMode: $scope.maps.TravelMode.DRIVING
-    };
+    theDateTime.add({ hours: theHourOffset});
 
-    var directionsService = new $scope.maps.DirectionsService();
-    directionsService.route(request, function(directionResult, status) {
-      if (status == $scope.maps.DirectionsStatus.OK) {
+    var theLocation = $scope.routePlaces.start.geometry.location;
+    var dateTimeString = forecastService.createPrettyLocalDateTime(theLocation.latitide, theLocation.longitude, theDateTime);
 
-          $scope.forecastMarkers = [];
+    $scope.departureTimeDisplays.push(
+      {
+        'display':dateTimeString, 
+        'dateObj': new Date(theDateTime.getTime())
+      }
+      );
+  }
 
-          // reset our departure time list
-          $scope.rebuildDepartureTimes();
-
-          // display the directions
-          directionsDisplay.setPanel(document.getElementById("directionSteps"));
-          directionsDisplay.setDirections(directionResult);
-
-          var myRoute = directionResult.routes[0].legs[0];
-          var steps = myRoute.steps;
-          
-          var travelSecs = 0; // in seconds
-          var distanceMeters = 0; // in meters
-          var departureTime = new Date();
-          
-          var lastTime = 0;
-          var lastDistance = 0;
-
-          for( var ii =0; ii < steps.length; ii++ ) {
-            var step = steps[ii];
-            
-            if( ii === 0 || lastTime <= travelSecs - 60*60 || lastDistance <= distanceMeters - 100*1000  ) {  
-              var gj = forecastService.createGeoJSONInstance(step.lat_lngs[0].lat(), step.lat_lngs[0].lng(),departureTime, distanceMeters, travelSecs);
-              $log.debug(ii + " " + travelSecs);
-              $scope.forecastMarkers.push(gj);
-              lastTime = travelSecs;
-              lastDistance = distanceMeters;
-            }
-            distanceMeters += step.distance.value;
-            travelSecs += step.duration.value;
-          }
-  
-          // now add end location
-          var gjend = forecastService.createGeoJSONInstance(myRoute.end_location.lat(), myRoute.end_location.lng(), departureTime, myRoute.distance.value, myRoute.duration.value);
-          $log.debug(gjend);
-          $scope.forecastMarkers.push(gjend);
-             
-        }
-        else {
-           $scope.forecastMarkers = [];
-        }
-      });
-  };
-  // handle slide events
+   // handle slide events
   $scope.slideDelegate = function (value, event) {
     $scope.forecastMarkers.forEach(function(geoJSON) {
       var dt =  $scope.departureTimeDisplays[value].dateObj;
@@ -204,20 +161,85 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService, $sce) {
       forecastService.updateGeoJSONInstance(geoJSON, dt);
     });
   };
-  
-  $scope.renderHazard = function(hazardArray) {
-    var htext = "";
-    if( hazardArray !== undefined && hazardArray !== null ) {
-      htext = hazardArray.join(", ");
-    }
-    
-    return $sce.trustAsHtml(htext);
-  };
 
- /* $scope.$watch('watchPoints', function(ov,nv) {
-         $log.debug("watching...");
-         $log.debug($scope.forecastMarkers);
-           
-    }, true);*/
+  $scope.createWeatherSteps = function(directions) {
+
+      // reset our directions markers
+      $scope.forecastMarkers = [];
+
+      // reset our departure time list
+      $scope.rebuildDepartureTimes();
+
+      // if there's no directions, we;re done
+      if( !directions || !directions.routes  || directions.routes.length === 0 ) {
+        return;
+      }
+    
+      var myRoute = directions.routes[0].legs[0];
+      var steps = myRoute.steps;
+      
+      var travelSecs = 0; // in seconds
+      var distanceMeters = 0; // in meters
+      var departureTime = new Date();
+      
+      var lastTime = 0;
+      var lastDistance = 0;
+
+      for( var ii =0; ii < steps.length; ii++ ) {
+        var step = steps[ii];
+        
+        if( ii === 0 || lastTime <= travelSecs - 60*60 || lastDistance <= distanceMeters - 100*1000  ) {  
+          var gj = forecastService.createGeoJSONInstance(step.lat_lngs[0].lat(), step.lat_lngs[0].lng(),departureTime, distanceMeters, travelSecs);
+          $log.debug(ii + " " + travelSecs);
+          $scope.forecastMarkers.push(gj);
+          lastTime = travelSecs;
+          lastDistance = distanceMeters;
+        }
+        distanceMeters += step.distance.value;
+        travelSecs += step.duration.value;
+      }
+
+      // now add end location
+      var gjend = forecastService.createGeoJSONInstance(myRoute.end_location.lat(), myRoute.end_location.lng(), departureTime, myRoute.distance.value, myRoute.duration.value);
+      $log.debug(gjend);
+      $scope.forecastMarkers.push(gjend);
+  }
+
+  // get google directions
+  $scope.calcRoute = function (routePlaces) {
+    if( routePlaces.start === null || routePlaces.end === null ) {
+      return;
+    }
+
+    var request = {
+      origin: routePlaces.start.geometry.location,
+      destination: routePlaces.end.geometry.location,
+      travelMode: $scope.maps.TravelMode.DRIVING,
+      provideRouteAlternatives: true
+    };
+
+    var directionsService = new $scope.maps.DirectionsService();
+    directionsService.route(request, function(directionResult, status) {
+
+
+      if (status === $scope.maps.DirectionsStatus.OK || status === $scope.maps.DirectionsStatus.ZERO_RESULTS) {
+
+          $scope.createWeatherSteps(directionResult);
+      
+          $log.debug("DirectionsResult", directionResult);
+
+          // display the directions on the map and in the steps
+          $scope.directionsDisplay.setMap($scope.map.control.getGMap());
+          $scope.directionsDisplay.setPanel(document.getElementById("directionSteps"));
+          $scope.directionsDisplay.setDirections(directionResult);
+        }
+        else {
+          $scope.createWeatherSteps(null);
+          $scope.directionsDisplay.setDirections(null);         
+        }
+      });
+  };
+ 
+  
 }])
 
