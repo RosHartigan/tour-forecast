@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html ng-app="tour-forecast-app"  id='ng-app'>
 <head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8"/>
 <title>Tour Forecast</title>
 
  <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css'
           rel='stylesheet' type='text/css'>
  <link href='./styles/vendor/angular-bootstrap/ui-bootstrap-csp.css'
+          rel='stylesheet' type='text/css'>
+ <link href='./styles/vendor/seiyria-bootstrap-slider/bootstrap-slider.css'
           rel='stylesheet' type='text/css'>
  <link href='./styles/tour-forecast-app.css'
           rel='stylesheet' type='text/css'>
@@ -21,15 +24,31 @@
 	     
 	      <div  id="searchboxEnd"></div>
 	    </div>
-      <div class="weather-steps-container">
-        <div class="row  weather-step" ng-repeat="model in forecastMarkers track by model.id">
-          <div class="col-sm-3">
-            <img class="img-responsive img-rounded" src="{{model.properties.icon}}" />
+
+      <div ng-show="forecastMarkers.length > 0" class="weather-steps-container" >
+      <div class="weather-steps-header">
+      <div>Route Forecast departing <strong>{{departureTimeDisplays[departureTimeIdx].display}}</strong></div>
+      <div class="timeslider">
+        <span slider
+            ng-model="departureTimeIdx"
+            tooltip="hide"
+            min = "0"
+            max = "departureTimeDisplays.length-1"
+            on-start-slide="slideDelegate(value, $event)"
+            on-slide="slideDelegate(value, $event)"
+            on-stop-slide="slideDelegate(value, $event)"
+              >
+        </span>
+      </div>
+      </div>
+        <div class="weather-step" ng-repeat="model in forecastMarkers track by model.id">
+          <div class="weathericon">
+            <a href="{{model.properties.moreWeatherInfo}}" target="_blank"><img class="img-rounded" src="{{model.properties.options.icon}}" /></a>
           </div>
-          <div class="col-sm-9">
+          <div class="weathertext">
+            <div class="placetext"><strong>{{model.properties.arrivalDisplay}}</strong> <em>{{model.properties.areaDescription}}</em></div>
             <div>{{model.properties.weather}}</div>
-            <div>{{model.properties.arrivalDisplay}}</div>
-            <div>{{model.properties.hazards}}</div>
+            <div ng-bind-html="renderHazard(model.properties.hazards)"></div>
           </div>
         </div> 
       </div>    
@@ -52,7 +71,7 @@
                             events="searchbox.events"></ui-gmap-search-box>
            
 
-        <ui-gmap-markers idKey="'id'" models="forecastMarkers" coords="'properties'" icon="'properties.icon'" >
+        <ui-gmap-markers idKey="'id'" models="forecastMarkers" coords="'properties'" icon="'properties.options.icon'" doRebuildAll='true'>
         </ui-gmap-markers>
 
     
@@ -66,6 +85,8 @@
 <script type='text/javascript' src='./scripts/vendor/angular-bootstrap/ui-bootstrap.js'></script>
 <script type='text/javascript' src='./scripts/vendor/angular-simple-logger/angular-simple-logger.js'></script>
 <script type='text/javascript' src='./scripts/vendor/angular-google-maps/angular-google-maps.js'></script>
+<script type='text/javascript' src='./scripts/vendor/seiyria-bootstrap-slider/bootstrap-slider.js'></script>
+<script type='text/javascript' src='./scripts/vendor/angular-bootstrap-slider/angular-bootstrap-slider.js'></script>
 <script type='text/javascript' src='./scripts/vendor/date.js'></script>
 <script type='text/javascript' src='./scripts/vendor/date.format.js'></script>
 <script type='text/javascript' src='./scripts/forecast-module.js'></script>

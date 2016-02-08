@@ -1,5 +1,5 @@
 
-var mapApp = angular.module('tour-forecast-app', ['uiGmapgoogle-maps', 'forecast-module'])
+var mapApp = angular.module('tour-forecast-app', ['uiGmapgoogle-maps', 'forecast-module', 'ui.bootstrap-slider'])
 
 .config(['uiGmapGoogleMapApiProvider', '$httpProvider', function (GoogleMapApi) {
   GoogleMapApi.configure({
@@ -17,8 +17,8 @@ var mapApp = angular.module('tour-forecast-app', ['uiGmapgoogle-maps', 'forecast
   $templateCache.put('searchboxEnd.tpl.html', '<input id="pac-input" class="pac-controls" type="text" placeholder="Destination">');
   $templateCache.put('window.tpl.html', '<div ng-controller="WindowCtrl" ng-init="showPlaceDetails(parameter)">{{place.name}}</div>');
 }])
-.controller("tour-forecast-ctrl",['$scope', '$timeout', 'uiGmapLogger','uiGmapGoogleMapApi', 'forecastService', 
-function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
+.controller("tour-forecast-ctrl",['$scope', '$timeout', 'uiGmapLogger','uiGmapGoogleMapApi', 'forecastService', '$sce',
+function ($scope, $timeout, $log,GoogleMapApi, forecastService, $sce) {
 
  $log.currentLevel = $log.LEVELS.debug;
 
@@ -86,10 +86,50 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
     routePlaces: {
       start:null,
       end:null
-    }
+    },
+
+    departureTimeIdx: 0,
+
+    departureTimeDisplay: "now",
+    departureTimeDisplays: [{'display':"now", 'dateObj':null}]
 
   });
 
+
+  $scope.rebuildDepartureTimes = function () {
+      
+    $scope.departureTimeIdx = 0;
+
+    $scope.departureTimeDisplays = [{'display':"now", 'dateObj':null}];
+
+    var now = Date.now();
+    now.setMinutes(0,0,0);
+
+    $scope.addDepartureTime(now, 2);
+    $scope.addDepartureTime(now, 3);
+    $scope.addDepartureTime(now, 3);
+    $scope.addDepartureTime(now, 3);
+    $scope.addDepartureTime(now, 3);
+    $scope.addDepartureTime(now, 6);
+    $scope.addDepartureTime(now, 6);
+    $scope.addDepartureTime(now, 6);
+    $scope.addDepartureTime(now, 6);
+
+  };
+
+  $scope.addDepartureTime = function(theDateTime, theHourOffset) {
+
+    theDateTime.add({ hours: theHourOffset});
+    var departureDisplay = "";
+    try {
+      // need to handle time zone information here
+      departureDisplay = theDateTime.format("ddd, h:MM tt");
+    }
+    catch (e) { 
+      departureDisplay = theDateTime.toLocaleString();
+    }
+    $scope.departureTimeDisplays.push({'display':departureDisplay, 'dateObj':new Date(theDateTime)});
+  }
 
   // get google directions
   $scope.calcRoute = function (routePlaces) {
@@ -110,7 +150,10 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
     directionsService.route(request, function(directionResult, status) {
       if (status == $scope.maps.DirectionsStatus.OK) {
 
-           $scope.forecastMarkers = [];
+          $scope.forecastMarkers = [];
+
+          // reset our departure time list
+          $scope.rebuildDepartureTimes();
 
           // display the directions
           directionsDisplay.setPanel(document.getElementById("directionSteps"));
@@ -151,6 +194,26 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
         }
       });
   };
+  // handle slide events
+  $scope.slideDelegate = function (value, event) {
+    $scope.forecastMarkers.forEach(function(geoJSON) {
+      var dt =  $scope.departureTimeDisplays[value].dateObj;
+      if( dt === null ) {
+        dt = Date.now();
+      }
+      forecastService.updateGeoJSONInstance(geoJSON, dt);
+    });
+  };
+  
+  $scope.renderHazard = function(hazardArray) {
+    var htext = "";
+    if( hazardArray !== undefined && hazardArray !== null ) {
+      htext = hazardArray.join(", ");
+    }
+    
+    return $sce.trustAsHtml(htext);
+  };
+
  /* $scope.$watch('watchPoints', function(ov,nv) {
          $log.debug("watching...");
          $log.debug($scope.forecastMarkers);

@@ -18,10 +18,18 @@ use Data::Dumper qw(Dumper);
 
 # feature properties:
 use constant {
-	SOURCES => 'sources',
-	FORECASTSERIES => 'forecastSeries',
 	AREADESCRIPTION => 'areaDescription',
-	TIMEZONE => 'timeZone'
+	CREATIONDATE => 'creationDate',
+	CREDIT => 'credit',
+	CREDITLOGO => 'creditLogo',
+	DISCLAIMER => 'disclaimer',
+	MOREWEATHERINFO => 'moreWeatherInfo',
+	FORECASTSERIES => 'forecastSeries',
+	SOURCES => 'sources',
+	TIMEZONE => 'timeZone',
+	TIMEZONEOFFSET => 'timeZoneOffset',
+	TIMEZONEABBR => 'timeZoneAbbr',
+	REFRESH => 'refresh'
 };
 
 # forecast series properties
@@ -84,6 +92,34 @@ sub getLatLon(\%) {
 	my @coords = split(',',$latLonString);
 	return @coords;
 
+}
+
+sub setTimeZone(\%$) {
+	my $feature = shift;
+	my $datetime_str = shift;
+
+	#if( not defined($feature->{properties}{+TIMEZONE}) || not defined($feature->{properties}{+TIMEZONEOFFSET})) {
+		my $dt = eval {
+			DateTime::Format::ISO8601->parse_datetime( $datetime_str );
+		};
+			
+		if( defined($dt)) {
+
+			if( $dt->offset() ne 0 ) {
+				$feature->{properties}{+TIMEZONEOFFSET} = $dt->offset();
+			}
+			
+			my $tz = $dt->time_zone();
+
+			if( defined($tz) && not $tz->is_utc() ) {
+				$feature->{properties}{+TIMEZONE} = $tz->name();
+				if( $tz->is_olson() ) {
+					$feature->{properties}{+TIMEZONEABBR} = $tz->short_name_for_datetime( $dt );
+				}
+			}
+
+		}
+	#}	
 }
 
 1;

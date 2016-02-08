@@ -13,6 +13,7 @@ package NWS_DWML;
 use XML::LibXML;
 use DateTime::Format::ISO8601;
 use DateTime;
+use DateTime::TimeZone;
 use CGI::Carp;
 use Data::Dumper qw(Dumper);
 use GeoJSON;
@@ -46,21 +47,26 @@ sub compileForecastFromDWML($\%) {
 
 	# creation date from head
 	foreach my $cdate ($doc->findnodes('/dwml/head/product/creation-date')) {
-		$feature->{properties}{'refresh'} = $cdate->getAttribute('refresh-frequency' );
-		$feature->{properties}{'creationDate'} = $cdate->textContent;
+		$feature->{properties}{GeoJSON::REFRESH} = $cdate->getAttribute('refresh-frequency' );
+		$feature->{properties}{GeoJSON::CREATIONDATE} = $cdate->textContent;
+
+		GeoJSON::setTimeZone(%$feature, $cdate->textContent);
+
+#		my $dt = DateTime::Format::ISO8601->parse_datetime( $cdate->textContent );#
+#		print STDERR "creation date ".$dt->time_zone()->name()."\n";
 	}
 
 	# other data source information from head
 	foreach my $pc ($doc->findnodes('/dwml/head/source')) {
 	
 		foreach my $disclaimer ($pc->findnodes('.//disclaimer') ) {
-			$feature->{properties}{'disclaimer'} = $disclaimer->textContent;
+			$feature->{properties}{GeoJSON::DISCLAIMER} = $disclaimer->textContent;
 		}
 		foreach my $credit ($pc->findnodes('.//credit') ) {
-			$feature->{properties}{'credit'} = $credit->textContent;
+			$feature->{properties}{GeoJSON::CREDIT} = $credit->textContent;
 		}
 		foreach my $creditLogo ($pc->findnodes('.//credit-logo') ) {
-			$feature->{properties}{'creditLogo'} = $creditLogo->textContent;
+			$feature->{properties}{GeoJSON::CREDITLOGO} = $creditLogo->textContent;
 		}	
 	}
 	#get the locations
@@ -78,7 +84,9 @@ sub compileForecastFromDWML($\%) {
 		
 		# description of location
 		foreach my $area_description ($location->findnodes('.//area-description[1]') ) {
-			$location{ 'area-description' } = $area_description->textContent;
+			if( length($area_description->textContent) > 0 ) {
+				$feature->{properties}{GeoJSON::AREADESCRIPTION} = $location{'area-description'};
+			}
 		}	
 
 		# latitude and longitude
@@ -105,11 +113,10 @@ sub compileForecastFromDWML($\%) {
 	
 	#get the time layouts
 	my %time_layouts;
-	my $time_zone;
-
+	
 	foreach my $time_layout ($doc->findnodes('/dwml/data/time-layout')) {
 		my $tk="no time key";
-		my $bLocal = 0;
+		my $bLocal = false;
 		
 		#each key has a format something like:
 		# k-p1h-n63-2
@@ -135,16 +142,16 @@ sub compileForecastFromDWML($\%) {
 		my $idx=0;
 		foreach my $t ($time_layout->findnodes('./start-valid-time') ) {
 			my $datetime_str = $t->textContent;
-			my $dt = DateTime::Format::ISO8601->parse_datetime( $datetime_str );
-			
-			# check for errors here
-			# todo: use bLocal?
-			if( $bLocal ) {
-				$time_zone = $dt->time_zone();
+			my $dt = eval {
+				DateTime::Format::ISO8601->parse_datetime( $datetime_str );
+			};
+				
+			if( defined($dt)) {
+
+				GeoJSON::setTimeZone(%$feature, $datetime_str);
+				$dt->set_time_zone('UTC');
+				$time_layouts{$tk}{'times'}[$idx] = $dt;
 			}
-			$dt->set_time_zone('UTC');
-			
-			$time_layouts{$tk}{'times'}[$idx] = $dt;
 			$idx++;
 		}
 		
@@ -156,15 +163,9 @@ sub compileForecastFromDWML($\%) {
 	# get specific weather info for each time layout (expecting multiple)
 	foreach my $lk  (keys %locations) {
 
-
-		$feature->{properties}{GeoJSON::AREADESCRIPTION} = $location{'area-description'};
-
 		# we're assuming we're only dealing with one point .... so there's only one time zone
-		if( defined ($time_zone)) {
-			$feature->{properties}{GeoJSON::TIMEZONE} = $time_zone->name();
-		}
-		foreach my $mwi ($doc->findnodes('/dwml/data/moreWeatherInformatione[@applicable-location="'.$lk.'"]')) {
-			$feature->{'properties'}{'moreWeatherInformation'} = $mwi->textContent;
+		foreach my $mwi ($doc->findnodes('/dwml/data/moreWeatherInformation[@applicable-location="'.$lk.'"]')) {
+			$feature->{properties}{GeoJSON::MOREWEATHERINFO} = $mwi->textContent;
 		}
 		
 		# now scoop up the forecast info into any array of blocks keyed by time
@@ -348,11 +349,11 @@ sub compileForecastFromDWML($\%) {
 						my $time_key = GeoJSON::create_time_slot(%$feature,$cur_dt, $next_dt);
 
 						#also pass local time to make our lives easier
-						my $lt = $cur_dt->clone();
-						$lt->set_time_zone($time_zone);
+						# my $lt = $cur_dt->clone();
+						# $lt->set_time_zone($time_zone);
 						
 						foreach my $info_key (keys %hc) {
-							$feature->{properties}{+GeoJSON::FORECASTSERIES}{$time_key}{$info_key} = $hc{$info_key}{values}[$src_idx];
+							$feature->{properties}{GeoJSON::FORECASTSERIES}{$time_key}{$info_key} = $hc{$info_key}{values}[$src_idx];
 						}
 					}
 					

@@ -28,6 +28,18 @@ module.exports = function(grunt) {
 	    files: {
 	      'app/scripts/vendor/angular-google-maps/angular-google-maps.js': ['bower_components/angular-google-maps/dist/angular-google-maps.js']
 	    }
+	  },
+	  bootstrapSlider: {
+	    files: {
+	      'app/scripts/vendor/seiyria-bootstrap-slider/bootstrap-slider.js': ['bower_components/seiyria-bootstrap-slider/dist/bootstrap-slider.js'],
+	      'app/styles/vendor/seiyria-bootstrap-slider/bootstrap-slider.css': ['bower_components/seiyria-bootstrap-slider/dist/css/bootstrap-slider.css']
+	    }
+	  },
+
+	  angularBootstrapSlider: {
+	    files: {
+	      'app/scripts/vendor/angular-bootstrap-slider/angular-bootstrap-slider.js': ['bower_components/angular-bootstrap-slider/slider.js']
+	    }
 	  }
 	}
   });

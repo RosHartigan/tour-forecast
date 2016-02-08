@@ -160,9 +160,17 @@ if ($bJsonSuccess) {
 			'iconLink' => GeoJSON::WEATHERICON
 			);
 
+
 		# loop through the time periods
 		foreach my $jkey (keys $jsonObject) {
-					
+			if( $jkey eq 'location') {
+				$feature->{properties}{GeoJSON::AREADESCRIPTION} = $jsonObject->{$jkey}{areaDescription};;
+			}			
+			elsif( $jkey eq 'creationDate') {
+				
+				$feature->{properties}{GeoJSON::CREATIONDATE} = $jsonObject->{$jkey};
+				GeoJSON::setTimeZone(%$feature,  $jsonObject->{$jkey});
+			}
 			# each time period will have a 'unixtime' field that defines the hours
 			my $unixTimeArray = $jsonObject->{$jkey}{'unixtime'};
 			if( defined($unixTimeArray) ) {
@@ -182,7 +190,7 @@ if ($bJsonSuccess) {
 							if( $param eq 'iconLink' && length($value) > 0) {
 								$value = GeoJSON::NWSICONDIR . $value;
 							}
-							$feature->{'properties'}{GeoJSON::FORECASTSERIES}{$time_key}{$fieldxfer{$param}} = $value;
+							$feature->{properties}{GeoJSON::FORECASTSERIES}{$time_key}{$fieldxfer{$param}} = $value;
 						}
 						else {
 							$bJsonSuccess = false;

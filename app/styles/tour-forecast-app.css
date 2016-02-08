@@ -4,14 +4,53 @@ html, body {
   padding: 0px
 }
 
+.weather-steps-header {
+  margin: 10px 0 4px 0;
+  padding: 5px;
+  border: 1px solid blue;
+  background-color: lightblue;
+}
+
+.weather-steps-header .timeslider {
+  margin:6px;
+}
+
 
 .weather-step {
   padding-top: 2px;
   padding-bottom: 2px;
-  border-top: 1px solid gray;
+  border-bottom: 1px solid #ddd;
   margin: 0;
 }
 
+.weather-step .weathericon {
+  display:inline-block;
+}
+
+.weather-step .weathertext {
+  display:inline-block;
+  padding-top:0;
+  padding-left:4px;
+  width:75%;
+}
+
+.weather-step .weathertext  .timetext {
+  display:inline-block;
+  font-size:12px;
+  text-overflow: ellipsis;
+}
+
+.weather-step .weathertext  .placetext {
+  display:inline-block;
+  font-size:12px;
+  text-overflow: ellipsis;
+  overflow:hidden;
+  white-space: nowrap;
+}
+
+.weather-step .weathertext .hazard {
+  color: #A00000;
+}
 
 .pac-controls {
   margin-top: 8px;
