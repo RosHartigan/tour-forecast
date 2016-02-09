@@ -20,7 +20,7 @@
 #
 #
 #	 IN: lat, lon, ut (unused)
-#   OUT: geoJSON FeatureCollection
+#   OUT: geoJSON Feature, could return collection if we use more than one point
 #
 #
 #	This script uses NWS services to get hourly data.  This is the most complete source of free hourly 
@@ -157,6 +157,8 @@ if ($bJsonSuccess) {
 	}
 	else {
 		push(@{$feature->{properties}{GeoJSON::SOURCES}}, $res->status_line);
+		$feature->{properties}{GeoJSON::CREDIT} = "http://graphical.weather.gov/";
+		$feature->{properties}{GeoJSON::CREDITLOGO} = "http://www.weather.gov/images/nws/nws_logo.png";
 
 		my %fieldxfer = (
 			'temperature' => GeoJSON::TEMPERATURE,

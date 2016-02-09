@@ -63,11 +63,14 @@ sub compileForecastFromDWML($\%) {
 			$feature->{properties}{GeoJSON::DISCLAIMER} = $disclaimer->textContent;
 		}
 		foreach my $credit ($pc->findnodes('.//credit') ) {
-			$feature->{properties}{GeoJSON::CREDIT} = $credit->textContent;
+			#$feature->{properties}{GeoJSON::CREDIT} = $credit->textContent;
 		}
 		foreach my $creditLogo ($pc->findnodes('.//credit-logo') ) {
-			$feature->{properties}{GeoJSON::CREDITLOGO} = $creditLogo->textContent;
+			#$feature->{properties}{GeoJSON::CREDITLOGO} = $creditLogo->textContent;
 		}	
+		$feature->{properties}{GeoJSON::CREDIT} = "http://graphical.weather.gov/";
+		$feature->{properties}{GeoJSON::CREDITLOGO} = "http://www.weather.gov/images/nws/nws_logo.png";
+
 	}
 	#get the locations
 	my %locations;

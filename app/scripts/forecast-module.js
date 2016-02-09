@@ -108,8 +108,8 @@ angular.module('forecast-module',[])
     geoJSON.properties.departureTime = departureTime;
 
     // corresponding updated arrival time
-    var arrivalTime = new Date();
-    arrivalTime.setTime(departureTime.getTime() + geoJSON.properties.travelSecs * 1000);
+    var arrivalTime = new Date(departureTime.getTime());
+    arrivalTime.addSeconds( geoJSON.properties.travelSecs );
 
     geoJSON.properties.arrivalTime = arrivalTime;
     
@@ -143,14 +143,19 @@ angular.module('forecast-module',[])
       else {
         geoJSON.properties.moreWeatherInfo = 'http://www.weather.gov/';
       }
-  
+
+      // now move all the credit stuff...
+      ['credit', 'disclaimer', 'creditLogo'].forEach(function (aProp) {
+        geoJSON.properties[aProp] = srcProps[aProp];
+      })
+
       // get the forecast for this time slot    
       var dtime_string = geoJSON.properties.arrivalTime.toISOString();
       for( var timekey in srcProps.forecastSeries) {
         if( dtime_string >= timekey  && dtime_string < srcProps.forecastSeries[timekey]['timeEndUTC']) {
           
           // icon
-          geoJSON.properties.icon = forecastIconService.swapIcon(srcProps.forecastSeries[timekey]['weatherIcon'], 'nws', 'weather.com', 'a');
+          geoJSON.properties.icon = forecastIconService.swapIcon(srcProps.forecastSeries[timekey]['weatherIcon'], 'nws', 'weather.com', 'i');
           
           // weather summary
           geoJSON.properties.weather = srcProps.forecastSeries[timekey]['weatherSummary'];  
@@ -188,9 +193,9 @@ angular.module('forecast-module',[])
       var dayTimeForDisplay = dt;
       displayString = dt.toLocaleString();
 
-      // can't really set the timezone for Date, so we have to fake out UTC ....          
-      arrivalTimeForDisplay = new Date();
-      arrivalTimeForDisplay.setTime(dt.getTime() + tzSecs * 1000);                
+      // can't really set the timezone for Date, so we have to fake out UTC ....    
+      arrivalTimeForDisplay = new Date(dt.getTime());      
+      arrivalTimeForDisplay.addSeconds( tzSecs );
     
       displayString = arrivalTimeForDisplay.format("ddd, h:MM tt", true);
 
@@ -198,7 +203,7 @@ angular.module('forecast-module',[])
       if( tzmins !== dt.getTimezoneOffset() ) {
           // it's not exactly correct to use THIS timezone to get daylight savings indicator 
           // for another time zone, but it'll do pig
-          var tza =  Date.getTimezoneAbbreviation(tzSecs / 60, dt.isDaylightSavingTime());      
+          var tza =  Date.getTimezoneAbbreviation(this.forecastGeoJSON.properties.timeZone, dt.isDaylightSavingTime());      
           displayString += " " + tza;
         }
       }
@@ -244,8 +249,7 @@ angular.module('forecast-module',[])
         })
           .then(function(response) {
               if (typeof response.data === 'object') {
-                  $log.debug('fetch forecast for '+me.latitude + " " + me.longitude)
-                  me.isCurrent = true;
+                   me.isCurrent = true;
                   me.forecastGeoJSON = response.data;
               } else {
                   // invalid response; probably no forecast available for that location.

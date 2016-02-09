@@ -5,6 +5,7 @@ html, body {
 }
 
 .weather-steps-container {
+  margin-bottom:10px;
 }
 
 .weather-steps-header {
@@ -27,6 +28,16 @@ html, body {
   borer-top:0;
 }
 
+.weather-step  .placetext {
+  font-size:12px;
+  text-overflow: ellipsis;
+  overflow:hidden;
+  white-space: nowrap;
+  background-color: #ddf;
+  padding: 2px;
+}
+
+
 .weather-step .weathericon {
   display:inline-block;
 }
@@ -38,18 +49,22 @@ html, body {
   vertical-align: middle;
 }
 
-.weather-step  .placetext {
-  font-size:12px;
-  text-overflow: ellipsis;
-  overflow:hidden;
-  white-space: nowrap;
-  background-color: #ddf;
-  padding: 2px;
-}
 
 .weather-step .weathertext .weatherhazard {
   color: #A00000;
 }
+
+.credit-step {
+  background-color: #ddf;
+  font-size:12px;
+}
+.weather-step .crediticon {
+  display:inline-block;
+  width: 50px;
+  height:50px;
+}
+
+
 
 .pac-controls {
   margin-top: 8px;
