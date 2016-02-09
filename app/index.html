@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html ng-app="tour-forecast-app"  id='ng-app'>
 <head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="content-type" content="text/html; charset=UTF-8"/>
 <title>Tour Forecast</title>
 
@@ -18,14 +21,14 @@
 <div class="container">
 <div class="row">
 
-  <div class="col-sm-4">
+  <div class="col-md-4">
     <div class="direction-points">
       <div  id="searchboxStart"></div>
      
       <div  id="searchboxEnd"></div>
     </div>
 
-    <div class="weather-steps-container" >
+    <div class="weather-steps-container" ng-hide "forecastMarkers.length === 0">
       <div  ng-repeat-start="model in forecastMarkers | orderBy: 'properties.distance' track by model.id"></div>
 
       <div class="weather-steps-header" ng-if="$first">
@@ -70,7 +73,7 @@
     <div id="directionSteps" class="direction-steps-container"></div>    
   </div>
 
-  <div class="col-sm-8">
+  <div class="col-md-8">
     <ui-gmap-google-map 
       id="map-canvas"
       center="map.center"

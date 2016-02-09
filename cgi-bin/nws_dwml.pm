@@ -8,7 +8,7 @@
 # Author: Ros Hartigan, Feb 2016, xrgb.com
 #
 
-package NWS_DWML;
+package nws_dwml;
 
 use XML::LibXML;
 use DateTime::Format::ISO8601;
@@ -16,7 +16,7 @@ use DateTime;
 use DateTime::TimeZone;
 use CGI::Carp;
 use Data::Dumper qw(Dumper);
-use GeoJSON;
+use geojson;
 
 
 # 
@@ -43,14 +43,14 @@ sub compileForecastFromDWML($\%) {
 	#    weather, condtains list of weather-conditions
 	# serialize the structure
 	
-	my ($lat, $lon) = GeoJSON::getLatLon(%$feature);
+	my ($lat, $lon) = geojson::getLatLon(%$feature);
 
 	# creation date from head
 	foreach my $cdate ($doc->findnodes('/dwml/head/product/creation-date')) {
-		$feature->{properties}{GeoJSON::REFRESH} = $cdate->getAttribute('refresh-frequency' );
-		$feature->{properties}{GeoJSON::CREATIONDATE} = $cdate->textContent;
+		$feature->{properties}{geojson::REFRESH} = $cdate->getAttribute('refresh-frequency' );
+		$feature->{properties}{geojson::CREATIONDATE} = $cdate->textContent;
 
-		GeoJSON::setTimeZone(%$feature, $cdate->textContent);
+		geojson::setTimeZone(%$feature, $cdate->textContent);
 
 #		my $dt = DateTime::Format::ISO8601->parse_datetime( $cdate->textContent );#
 #		print STDERR "creation date ".$dt->time_zone()->name()."\n";
@@ -60,16 +60,16 @@ sub compileForecastFromDWML($\%) {
 	foreach my $pc ($doc->findnodes('/dwml/head/source')) {
 	
 		foreach my $disclaimer ($pc->findnodes('.//disclaimer') ) {
-			$feature->{properties}{GeoJSON::DISCLAIMER} = $disclaimer->textContent;
+			$feature->{properties}{geojson::DISCLAIMER} = $disclaimer->textContent;
 		}
 		foreach my $credit ($pc->findnodes('.//credit') ) {
-			#$feature->{properties}{GeoJSON::CREDIT} = $credit->textContent;
+			#$feature->{properties}{geojson::CREDIT} = $credit->textContent;
 		}
 		foreach my $creditLogo ($pc->findnodes('.//credit-logo') ) {
-			#$feature->{properties}{GeoJSON::CREDITLOGO} = $creditLogo->textContent;
+			#$feature->{properties}{geojson::CREDITLOGO} = $creditLogo->textContent;
 		}	
-		$feature->{properties}{GeoJSON::CREDIT} = "http://graphical.weather.gov/";
-		$feature->{properties}{GeoJSON::CREDITLOGO} = "http://www.weather.gov/images/nws/nws_logo.png";
+		$feature->{properties}{geojson::CREDIT} = "http://graphical.weather.gov/";
+		$feature->{properties}{geojson::CREDITLOGO} = "http://www.weather.gov/images/nws/nws_logo.png";
 
 	}
 	#get the locations
@@ -88,7 +88,7 @@ sub compileForecastFromDWML($\%) {
 		# description of location
 		foreach my $area_description ($location->findnodes('.//area-description[1]') ) {
 			if( length($area_description->textContent) > 0 ) {
-				$feature->{properties}{GeoJSON::AREADESCRIPTION} = $location{'area-description'};
+				$feature->{properties}{geojson::AREADESCRIPTION} = $location{'area-description'};
 			}
 		}	
 
@@ -151,7 +151,7 @@ sub compileForecastFromDWML($\%) {
 				
 			if( defined($dt)) {
 
-				GeoJSON::setTimeZone(%$feature, $datetime_str);
+				geojson::setTimeZone(%$feature, $datetime_str);
 				$dt->set_time_zone('UTC');
 				$time_layouts{$tk}{'times'}[$idx] = $dt;
 			}
@@ -168,7 +168,7 @@ sub compileForecastFromDWML($\%) {
 
 		# we're assuming we're only dealing with one point .... so there's only one time zone
 		foreach my $mwi ($doc->findnodes('/dwml/data/moreWeatherInformation[@applicable-location="'.$lk.'"]')) {
-			$feature->{properties}{GeoJSON::MOREWEATHERINFO} = $mwi->textContent;
+			$feature->{properties}{geojson::MOREWEATHERINFO} = $mwi->textContent;
 		}
 		
 		# now scoop up the forecast info into any array of blocks keyed by time
@@ -179,10 +179,10 @@ sub compileForecastFromDWML($\%) {
 				my %hc;
 				
 				my %fieldxfer = (
-					'temperature' => +GeoJSON::TEMPERATURE,
-					'weather' => +GeoJSON::WEATHERTEXT,
-					'conditions-icon' => +GeoJSON::WEATHERICON,
-					'hazards' => +GeoJSON::HAZARDS
+					'temperature' => +geojson::TEMPERATURE,
+					'weather' => +geojson::WEATHERTEXT,
+					'conditions-icon' => +geojson::WEATHERICON,
+					'hazards' => +geojson::HAZARDS
 					);
 				
 				# loop through weather paramaters
@@ -226,6 +226,7 @@ sub compileForecastFromDWML($\%) {
 						foreach my $condition ($info->findnodes('./'.$repeated_var) ) {
 							my $value = "";
 							if( $repeated_var eq "weather-conditions" ) {
+								
 								#weather consists of a list of values
 								# these values can contain visibility elements which I am ignoring
 								# the values elements contain attributes which combine to provide weather text:
@@ -235,7 +236,7 @@ sub compileForecastFromDWML($\%) {
 								#    qualifiers does what?
 															
 								foreach my $val ($condition->findnodes('./value')) {
-	
+									
 									my $coverage_text = "";
 									my $post_coverage_text = "";
 									my $weathertype_text = "";
@@ -335,12 +336,12 @@ sub compileForecastFromDWML($\%) {
 				#copy data for each time layout into our single hourly layout
 				my $data_array = $time_layouts{$tk}{times};
 				for(my $src_idx = 0; $src_idx < scalar (@$data_array) - 2; $src_idx++ ) {
-					
 					# first check if we have any actual data:
 					my $has_data = false;
 					foreach my $info_key (keys %hc) {
 						my $v = $hc{$info_key}{values}[$src_idx];
-						if( defined($v) && $v != null && length($v)>0) {
+					
+						if( $v ne null and length($v)>0) {
 							$has_data = true;						
 						}
 					}
@@ -349,14 +350,14 @@ sub compileForecastFromDWML($\%) {
 						my $next_dt = $data_array->[$src_idx + 1];
 						
 						#use UTC for key
-						my $time_key = GeoJSON::create_time_slot(%$feature,$cur_dt, $next_dt);
+						my $time_key = geojson::create_time_slot(%$feature,$cur_dt, $next_dt);
 
 						#also pass local time to make our lives easier
 						# my $lt = $cur_dt->clone();
 						# $lt->set_time_zone($time_zone);
 						
 						foreach my $info_key (keys %hc) {
-							$feature->{properties}{GeoJSON::FORECASTSERIES}{$time_key}{$info_key} = $hc{$info_key}{values}[$src_idx];
+							$feature->{properties}{geojson::FORECASTSERIES}{$time_key}{$info_key} = $hc{$info_key}{values}[$src_idx];
 						}
 					}
 					

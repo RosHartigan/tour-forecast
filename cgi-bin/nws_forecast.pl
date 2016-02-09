@@ -67,8 +67,8 @@ use CGI::Carp;
 use Data::Dumper qw(Dumper);
 
 use lib '.';
-use NWS_DWML;
-use GeoJSON;
+use nws_dwml;
+use geojson;
 
 my $query = CGI->new;
 
@@ -123,7 +123,7 @@ else {
 print $query->header(-type=>'application/json',-expires=>'+1h');
 
 # create our solitary feature
-my $feature = GeoJSON::create_feature($lat,$lon);
+my $feature = geojson::create_feature($lat,$lon);
 
 #create our useragent
 my $ua = LWP::UserAgent->new;
@@ -136,12 +136,11 @@ my $json = JSON->new->allow_nonref;
 # first we try to use the experimental NWS product - digitalJSON
 #   http://forecast.weather.gov/MapClick.php?lg=english&FcstType=digitalJSON&lat=43.6389&lon=-83.291
 my $req_str = "http://forecast.weather.gov/MapClick.php?lg=english&FcstType=digitalJSON&lat=$lat&lon=$lon";
-push(@{$feature->{properties}{GeoJSON::SOURCES}}, $req_str);
+push(@{$feature->{properties}{geojson::SOURCES}}, $req_str);
 
 my $req = HTTP::Request->new(GET => $req_str);
 my $res = $ua->request($req);
 my $bJsonSuccess = $res->is_success;
-
 if ($bJsonSuccess) {
 	my $json_string = $res->decoded_content;
 
@@ -153,29 +152,29 @@ if ($bJsonSuccess) {
 	if( $@ ) {
 		print STDERR "\nERROR in JSON return:\n$@\n";
 		$bJsonSuccess = false;
-		push(@{$feature->{properties}{GeoJSON::SOURCES}}, $@);
+		push(@{$feature->{properties}{geojson::SOURCES}}, $@);
 	}
 	else {
-		push(@{$feature->{properties}{GeoJSON::SOURCES}}, $res->status_line);
-		$feature->{properties}{GeoJSON::CREDIT} = "http://graphical.weather.gov/";
-		$feature->{properties}{GeoJSON::CREDITLOGO} = "http://www.weather.gov/images/nws/nws_logo.png";
+		push(@{$feature->{properties}{geojson::SOURCES}}, $res->status_line);
+		$feature->{properties}{geojson::CREDIT} = "http://graphical.weather.gov/";
+		$feature->{properties}{geojson::CREDITLOGO} = "http://www.weather.gov/images/nws/nws_logo.png";
 
 		my %fieldxfer = (
-			'temperature' => GeoJSON::TEMPERATURE,
-			'weather' => GeoJSON::WEATHERSUMMARY,
-			'iconLink' => GeoJSON::WEATHERICON
+			'temperature' => geojson::TEMPERATURE,
+			'weather' => geojson::WEATHERSUMMARY,
+			'iconLink' => geojson::WEATHERICON
 			);
 
 
 		# loop through the time periods
-		foreach my $jkey (keys $jsonObject) {
+		foreach my $jkey (keys %{$jsonObject}) {
 			if( $jkey eq 'location') {
-				$feature->{properties}{GeoJSON::AREADESCRIPTION} = $jsonObject->{$jkey}{areaDescription};;
+				$feature->{properties}{geojson::AREADESCRIPTION} = $jsonObject->{$jkey}{areaDescription};;
 			}			
 			elsif( $jkey eq 'creationDate') {
 				
-				$feature->{properties}{GeoJSON::CREATIONDATE} = $jsonObject->{$jkey};
-				GeoJSON::setTimeZone(%$feature,  $jsonObject->{$jkey});
+				$feature->{properties}{geojson::CREATIONDATE} = $jsonObject->{$jkey};
+				geojson::setTimeZone(%$feature,  $jsonObject->{$jkey});
 			}
 			# each time period will have a 'unixtime' field that defines the hours
 			my $unixTimeArray = $jsonObject->{$jkey}{'unixtime'};
@@ -186,7 +185,7 @@ if ($bJsonSuccess) {
 					my $sdt = DateTime->from_epoch(epoch => $utime );
 					my $edt = DateTime->from_epoch(epoch => 60 * 60 + $utime );
 			
-					my $time_key = GeoJSON::create_time_slot(%$feature, $sdt, $edt);
+					my $time_key = geojson::create_time_slot(%$feature, $sdt, $edt);
 
 					foreach $param (keys %fieldxfer) {
 						my $value = $jsonObject->{$jkey}{$param}[$tidx];
@@ -194,9 +193,9 @@ if ($bJsonSuccess) {
 						if( defined($value) ) {
 							# not a real link - just a name in the nws icon bank
 							if( $param eq 'iconLink' && length($value) > 0) {
-								$value = GeoJSON::NWSICONDIR . $value;
+								$value = geojson::NWSICONDIR . $value;
 							}
-							$feature->{properties}{GeoJSON::FORECASTSERIES}{$time_key}{$fieldxfer{$param}} = $value;
+							$feature->{properties}{geojson::FORECASTSERIES}{$time_key}{$fieldxfer{$param}} = $value;
 						}
 						else {
 							$bJsonSuccess = false;
@@ -208,7 +207,7 @@ if ($bJsonSuccess) {
 	}
 }
 else {
-	push(@{$feature->{properties}{GeoJSON::SOURCES}}, $res->status_line);
+	push(@{$feature->{properties}{geojson::SOURCES}}, $res->status_line);
 	print STDERR $res->status_line."\n";
 }
 
@@ -220,14 +219,18 @@ if( not $bJsonSuccess ) {
 $req_str = "http://graphical.weather.gov/xml/sample_products/browser_interface/ndfdXMLclient.php?product=time-series";
 
 # fetch temp, weather icons, weather text, and hazards
-#$req_str =  $req_str."&temp=temp&wx=wx&icons=icons&wwa=wwa";
-$req_str =  $req_str."&wx=wx&icons=icons&wwa=wwa";
-
+if( not $bJsonSuccess ) {
+	$req_str =  $req_str."&temp=temp&wx=wx&icons=icons&wwa=wwa";
+}
+# just hazards if json succeeded
+else {
+	$req_str =  $req_str."&wwa=wwa";
+}
 # at our location
 $req_str = $req_str."&listLatLon=".$lat.",".$lon;#."&begin=".$time_utc;
 
 # send source back
-push(@{$feature->{properties}{GeoJSON::SOURCES}}, $req_str);
+push(@{$feature->{properties}{geojson::SOURCES}}, $req_str);
 
 $req = HTTP::Request->new(GET => $req_str);
 $res = $ua->request($req);
@@ -250,25 +253,25 @@ if ($res->is_success) {
 	if( $@ ) {
 		$@ =~ s/at \/.*?$//s;               # remove module line number
 		print STDERR "\nERROR in xml return:\n$@\n";
-		push(@{$feature->{properties}{GeoJSON::SOURCES}}, $@);
+		push(@{$feature->{properties}{geojson::SOURCES}}, $@);
 
 	}
 	# otherwise parse away
 	else {
-		push(@{$feature->{properties}{GeoJSON::SOURCES}}, $res->status_line);
+		push(@{$feature->{properties}{geojson::SOURCES}}, $res->status_line);
 
 		#glean our geoJSON forecast data from the DWML
-		NWS_DWML::compileForecastFromDWML($doc, %$feature);
+		nws_dwml::compileForecastFromDWML($doc, %$feature);
 	}
-	# pretty print for shell
-	# and sort the hash by key
-	my $json_printed = $json->pretty($use_pretty)->canonical->encode( $feature );
-
-	print $json_printed;
 }
 else {
-	push(@{$feature->{properties}{GeoJSON::SOURCES}}, $res->status_line);
+	push(@{$feature->{properties}{geojson::SOURCES}}, $res->status_line);
 	print STDERR $res->status_line."\n";
 }
 
+# pretty print for shell
+# and sort the hash by key
+my $json_printed = $json->pretty($use_pretty)->canonical->encode( $feature );
+
+print $json_printed;
 

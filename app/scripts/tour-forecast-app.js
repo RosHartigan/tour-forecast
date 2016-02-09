@@ -164,11 +164,13 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
 
    // handle slide events
   $scope.slideDelegate = function (value, event) {
-    $scope.forecastMarkers.forEach(function(geoJSON) {
-      var dt =  $scope.departureTimeDisplays[value].dateObj;
+
+    var dt =  $scope.departureTimeDisplays[value].dateObj;
       if( dt === null ) {
         dt = new Date();
       }
+      
+    $scope.forecastMarkers.forEach(function(geoJSON) {
       forecastService.updateGeoJSONInstance(geoJSON, dt);
     });
   };
@@ -340,7 +342,7 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
                      
         forecastMarkers.push(gjInner);
 
-        $log.debug(innerLeg.end_address + " " + (travelMeters + innerLeg.distance.value)/1000 + " " + destTravelMeters/1000 +" " (travelSecs + innerLeg.duration.value) / (60*60)+ " " + innerLeg.end_location.lat() + " " + innerLeg.end_location.lng());
+        $log.debug(innerLeg.end_address + " " + (travelMeters + innerLeg.distance.value)/1000 + " " + destTravelMeters/1000 +" " +(travelSecs + innerLeg.duration.value) / (60*60)+ " " + innerLeg.end_location.lat() + " " + innerLeg.end_location.lng());
       }
       else {
         // hmmmmm.....

@@ -257,12 +257,14 @@ angular.module('forecast-module',[])
         })
           .then(function(response) {
               if (typeof response.data === 'object') {
-                   me.isCurrent = true;
                   me.forecastGeoJSON = response.data;
+                   me.isCurrent = true;
               } else {
                   // invalid response; probably no forecast available for that location.
                   me.isCurrent = true;
                   me.forecastGeoJSON = {};
+                  $log.debug("Did not get an object back from nws_forecast");
+                  $log.debug(response);
               }
 
           }, function(response) {
@@ -270,6 +272,8 @@ angular.module('forecast-module',[])
               // time stamo here
               me.isCurrent = true;
               me.forecastGeoJSON = {};
+                  $log.debug("Got an error back from nws_forecast");
+                  $log.debug(response);
           });
   }
 

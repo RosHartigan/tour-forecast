@@ -7,7 +7,7 @@
 # Author: Ros Hartigan, Feb 2016, xrgb.com
 #
 
-package GeoJSON;
+package geojson;
 
 use JSON;
 use DateTime::Format::ISO8601;
