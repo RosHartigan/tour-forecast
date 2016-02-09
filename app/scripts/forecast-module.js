@@ -6,7 +6,7 @@ angular.module('forecast-module',[])
 // geoJSON object representing the forecast for a given lat/lon/time
 .service('forecastService', function(pointForecast) {
   var pointForecasts = [];
-
+  
   this.getPointForecast = function(latitude, longitude) {
     var pointKey = pointForecast.generateKey(latitude, longitude);
     var pf = pointForecasts[pointKey];
@@ -108,20 +108,23 @@ angular.module('forecast-module',[])
     geoJSON.properties.departureTime = departureTime;
 
     // corresponding updated arrival time
-    var arrivalTime = new Date(departureTime.getTime());
-    arrivalTime.addSeconds( geoJSON.properties.travelSecs );
-
-    geoJSON.properties.arrivalTime = arrivalTime;
+    if( geoJSON.properties.travelSecs != undefined ) {
+      var arrivalTime = new Date(departureTime.getTime() + geoJSON.properties.travelSecs * 1000);
+      geoJSON.properties.arrivalTime = arrivalTime;
     
+      // create time display in time zone of current step
+      geoJSON.properties.arrivalDisplay = this.createPrettyLocalDateTime(arrivalTime);
+    }
+    else {
+      geoJSON.properties.arrivalDisplay = "";
+    }
+
     geoJSON.properties.weather = "No forecast available."
     geoJSON.properties.icon = "https://maps.gstatic.com/mapfiles/ms2/micons/blue.png";
     
     if( this.forecastGeoJSON !== undefined && this.forecastGeoJSON.properties !== undefined ){
         
       var srcProps = this.forecastGeoJSON.properties;
-
-      // create time display in time zone of current step
-      geoJSON.properties.arrivalDisplay = this.createPrettyLocalDateTime(arrivalTime);
 
       // add area description if we have it
       var areaDescription = srcProps.areaDescription;
@@ -177,6 +180,11 @@ angular.module('forecast-module',[])
   // create a short displayable day/time string in time LOCAL to this point
   // include timezone desc if different
   pointForecast.prototype.createPrettyLocalDateTime = function(dt) {
+
+    // its possible this date is undknown
+    if( dt === undefined ) {
+      return "";
+    }
 
     var displayString = "";
     var tzSecs = 0;

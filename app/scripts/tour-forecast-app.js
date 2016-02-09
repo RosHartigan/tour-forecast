@@ -32,10 +32,14 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
         suppressMarkers: true
     });
     $scope.directionsDisplay.addListener('directions_changed', function() {
-//      $scope.createWeatherSteps($scope.directionsDisplay.getDirections(), $scope.directionsDisplay.getRouteIndex());
+      $log.debug('directions_changed');
+      $scope.createWeatherStepsFromDirections($scope.directionsDisplay.getDirections(), $scope.directionsDisplay.getRouteIndex());
     });
     $scope.directionsDisplay.addListener('routeindex_changed', function() {
-      $scope.createWeatherSteps($scope.directionsDisplay.getDirections(), $scope.directionsDisplay.getRouteIndex());
+      $log.debug('routeindex_changed ' + $scope.directionsDisplay.getRouteIndex());
+      if( $scope.routeUpToDate ) {
+        $scope.createWeatherStepsFromDirections($scope.directionsDisplay.getDirections(), $scope.directionsDisplay.getRouteIndex());
+      }
     });
    
   });
@@ -92,8 +96,7 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
       }
     },
     forecastMarkers: [],
-    watchPoints: [],
-
+    
     routePlaces: {
       start:null,
       end:null
@@ -102,8 +105,9 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
     departureTimeIdx: 0,
 
     departureTimeDisplay: "now",
-    departureTimeDisplays: [{'display':"now", 'dateObj':null}]
+    departureTimeDisplays: [{'display':"now", 'dateObj':null}],
 
+    routeUpToDate : false
   });
 
   // SLIDING TIME SELECTION
@@ -183,7 +187,7 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
         $scope.rebuildDepartureTimes();
     }
   );
-  $scope.createWeatherSteps = function(directions, routeIdx) {
+  $scope.createWeatherStepsFromDirections = function(directions, routeIdx) {
 
       // reset our directions markers
       $scope.forecastMarkers = [];
@@ -192,73 +196,167 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
       if( !directions || !directions.routes  || directions.routes.length <= routeIdx) {
         return;
       }
-    
-      // should add this for each leg
-      var myLeg = directions.routes[routeIdx].legs[0];
-      var travelSecs = 0; // in seconds
-      var distanceMeters = 0; // in meters
-      var departureTime = new Date();
-      
-      // first add star and end locations
-      var gj = forecastService.createGeoJSONInstance(myLeg.start_location.lat(), myLeg.start_location.lng(), departureTime, 0, 0);
-      $scope.forecastMarkers.push(gj);    
 
-      gj = forecastService.createGeoJSONInstance(myLeg.end_location.lat(), myLeg.end_location.lng(), departureTime, myLeg.distance.value, myLeg.duration.value);
-      $scope.forecastMarkers.push(gj);    
+      $scope.routeUpToDate = true;
 
-
-      // now parse through steps to add additional locations
-      // approx every 100 KM
-      var lastDistance = 0;
-      var STEP_LENGTH = 100*1000;   // forecast step every 100 km
-      var SLUSH = 10 *1000;         //  plus or minus 10k km
-      var PIOVER180 = Math.PI / 180;
-      var RADIUS = 6378 * 1000;  // radius of earth in meters
-    
-      var steps = myLeg.steps;
-
-      for( var ii =0; ii < steps.length && (myLeg.distance.value - distanceMeters) > (STEP_LENGTH+SLUSH) ; ii++ ) {
-        
-        var step = steps[ii];
-
-        // add the step itself if its at APPROX the right distance
-        if(  (distanceMeters - lastDistance) > (STEP_LENGTH - SLUSH)  ) {  
-          var gj = forecastService.createGeoJSONInstance(step.lat_lngs[0].lat(), step.lat_lngs[0].lng(),departureTime, distanceMeters, travelSecs);
-          $scope.forecastMarkers.push(gj);
-          lastDistance = distanceMeters;
-        }
-
-        
-        // if the next step is too far away... add some intermediate locations
-        // calculate distance from latlngs describing the path
-        var interStepDist = 0;
-        var a2 = step.lat_lngs[0].lat() * PIOVER180
-        var b2 = step.lat_lngs[0].lng() * PIOVER180;
-        for( jj = 1; jj < step.lat_lngs.length && (distanceMeters + step.distance.value - lastDistance) >= STEP_LENGTH; jj++ ) {
-          var a1 = a2;
-          var b1 = b2;
-          a2 = step.lat_lngs[jj].lat() * PIOVER180;
-          b2 = step.lat_lngs[jj].lng() * PIOVER180;
-          var d = Math.acos(Math.cos(a1)*Math.cos(b1)*Math.cos(a2)*Math.cos(b2) + Math.cos(a1)*Math.sin(b1)*Math.cos(a2)*Math.sin(b2) + Math.sin(a1)*Math.sin(a2)) * RADIUS;
-          
-          interStepDist += d;
-
-          if( (distanceMeters + interStepDist - lastDistance) >= STEP_LENGTH ) {
-            $log.debug(lastDistance/1000.0);
-          
-            var gj = forecastService.createGeoJSONInstance(step.lat_lngs[jj].lat(), step.lat_lngs[jj].lng(),departureTime, lastDistance+interStepDist, travelSecs);
-            $scope.forecastMarkers.push(gj);
-            lastDistance += interStepDist;
-            interStepDist = 0;
-          }
-        }
-        
-        distanceMeters += step.distance.value;
-        travelSecs += step.duration.value;
+      // calcualte the weather steps for each leg    
+      for( var idx = 0; idx < directions.routes[routeIdx].legs.length; idx++) {
+        $scope.addWeatherStepsFromLeg(directions.routes[routeIdx].legs[idx], $scope.forecastMarkers);
       }
-
   }
 
+  // add weather steps from the path outlined by a given leg:
+  // about 1 every 100 km
+  $scope.addWeatherStepsFromLeg = function(leg, forecastMarkers) {
+
+    var travelSecs = 0; // in seconds
+    var distanceMeters = 0; // in meters
+    var departureTime = new Date();
+    
+    // first add star and end locations
+    var gj = forecastService.createGeoJSONInstance(leg.start_location.lat(), leg.start_location.lng(), departureTime, 0, 0);
+    forecastMarkers.push(gj);    
+
+    gj = forecastService.createGeoJSONInstance(leg.end_location.lat(), leg.end_location.lng(), departureTime, leg.distance.value, leg.duration.value);
+    forecastMarkers.push(gj);    
+
+
+    // now parse through steps to add additional locations
+    // approx every 100 KM
+    var lastDistance = 0;
+    var STEP_LENGTH = 100*1000;   // forecast step every 100 km
+    var SLUSH = 10 *1000;         //  plus or minus 10k km
+    var PIOVER180 = Math.PI / 180;
+    var RADIUS = 6366.71 * 1000;  // radius of earth in meters
+  
+    var steps = leg.steps;
+
+    for( var ii =0; ii < steps.length && (leg.distance.value - distanceMeters) > SLUSH ; ii++ ) {
+      
+      var step = steps[ii];
+
+      // add the step itself if its at APPROX the right distance
+      if(  (distanceMeters - lastDistance) > (STEP_LENGTH - SLUSH)  ) {  
+        $log.debug("step " +ii + " " + distanceMeters + " " + travelSecs);
+        var gjStep = forecastService.createGeoJSONInstance(step.lat_lngs[0].lat(), step.lat_lngs[0].lng(),departureTime, distanceMeters, travelSecs);
+        forecastMarkers.push(gjStep);
+        lastDistance = distanceMeters;
+      }
+      
+      // dist calculations courtesy of 
+      //    http://williams.best.vwh.net/avform.htm#Dist
+
+      // ---------------------------------------------------
+      // Distance between points
+      //      
+      // The great circle distance d between two points with coordinates {lat1,lon1} and {lat2,lon2} is given by:
+      //
+      //    d=acos(sin(lat1)*sin(lat2)+cos(lat1)*cos(lat2)*cos(lon1-lon2))
+      //
+      // A mathematically equivalent formula, which is less subject to rounding error for short distances is:
+      //
+      //    d=2*asin(sqrt((sin((lat1-lat2)/2))^2 + 
+      //                 cos(lat1)*cos(lat2)*(sin((lon1-lon2)/2))^2))
+
+      // ---------------------------------------------------
+
+      // if the next step is too far away... add some intermediate locations
+      // calculate distance from latlngs describing the path
+      var interStepDist = 0;
+      var latRad2 = step.lat_lngs[0].lat() * PIOVER180
+      var lonRad2 = step.lat_lngs[0].lng() * PIOVER180;
+      for( jj = 1; jj < step.lat_lngs.length && (distanceMeters + step.distance.value - lastDistance) >= STEP_LENGTH; jj++ ) {
+        var latRad1 = latRad2;
+        var lonRad1 = lonRad2;
+        latRad2 = step.lat_lngs[jj].lat() * PIOVER180;
+        lonRad2 = step.lat_lngs[jj].lng() * PIOVER180;
+
+        // var d = Math.acos(
+        //   Math.cos(latRad1)*Math.cos(lonRad1)*Math.cos(latRad2)*Math.cos(lonRad2) + 
+        //   Math.cos(latRad1)*Math.sin(lonRad1)*Math.cos(latRad2)*Math.sin(lonRad2) + 
+        //   Math.sin(latRad1)*Math.sin(latRad2)) 
+        // * RADIUS;
+        
+        // less accurate???
+        // var d = Math.acos(
+        //   Math.cos(latRad1)*Math.cos(latRad2)*Math.cos(lonRad1-lonRad2) + 
+        //   Math.sin(latRad1)*Math.sin(latRad2)) 
+        // * RADIUS;
+
+        var sLat = Math.sin( (latRad1-latRad2)/2 );
+        var sLon = Math.sin( (lonRad1-lonRad2)/2 );
+
+        var d = 2 * Math.asin(
+          Math.sqrt(sLat * sLat + Math.cos(latRad1)*Math.cos(latRad2)* sLon * sLon)
+          )
+        * RADIUS;
+
+        interStepDist += d;
+
+        if( (distanceMeters + interStepDist - lastDistance) >= STEP_LENGTH ) {
+         
+          lastDistance = distanceMeters + interStepDist;
+
+          $log.debug( ii + " " + jj + " " + lastDistance / 1000);
+
+          // add this step after determining travel time
+          $scope.addWeatherStepLater(step.lat_lngs[0], distanceMeters, travelSecs, step.lat_lngs[jj], lastDistance, departureTime, forecastMarkers);
+
+        }
+      }
+      
+      distanceMeters += step.distance.value;
+      travelSecs += step.duration.value;
+    }
+  }
+
+  // add a weaterh step after getting additional info about it from google
+  $scope.addWeatherStepLater = function(origin, travelMeters, travelSecs, destination, destTravelMeters, departureTime, forecastMarkers, tryCount){
+    if( tryCount === undefined ) {
+      tryCount = 0;
+    }
+    var request = {
+      origin: origin,
+      destination: destination,
+      travelMode: google.maps.DirectionsTravelMode.DRIVING
+    };
+
+    // Route the directions and pass the response to a
+    // function to create markers for each step.
+    var directionsService = new $scope.maps.DirectionsService();
+
+    directionsService.route(request, function(response, status) {
+
+      if (status === google.maps.DirectionsStatus.OK) {
+        var innerLeg = response.routes[0].legs[0];
+        
+        var gjInner = forecastService.createGeoJSONInstance(
+          innerLeg.end_location.lat(), 
+          innerLeg.end_location.lng(), 
+          departureTime, 
+          travelMeters + innerLeg.distance.value, 
+          travelSecs + innerLeg.duration.value);
+        gjInner.properties.areaDescription = innerLeg.end_address;
+                     
+        forecastMarkers.push(gjInner);
+
+        $log.debug(innerLeg.end_address + " " + (travelMeters + innerLeg.distance.value)/1000 + " " + destTravelMeters/1000 +" " (travelSecs + innerLeg.duration.value) / (60*60)+ " " + innerLeg.end_location.lat() + " " + innerLeg.end_location.lng());
+      }
+      else {
+        // hmmmmm.....
+        // TODO: probably shouldn't add a step if this query fails
+        $log.debug("intermediate step travelTime: directionsRequest returned status: " + status);
+
+        // try again in 3 seconds, unless we done this already twice before...
+        if( status === google.maps.DirectionsStatus.OVER_QUERY_LIMIT && tryCount < 2) {
+          $timeout(function() {
+              $scope.addWeatherStepLater(origin, travelMeters, travelSecs, destination, destTravelMeters, departureTime, forecastMarkers, tryCount++);
+          }, 3000);
+
+        }
+      }
+    });
+  }
   // get google directions
   $scope.calcRoute = function (routePlaces) {
     if( routePlaces.start === null || routePlaces.end === null ) {
@@ -279,6 +377,9 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
       if (status === $scope.maps.DirectionsStatus.OK || status === $scope.maps.DirectionsStatus.ZERO_RESULTS) {
           $log.debug("DirectionsResult");
           $log.debug(directionResult);
+
+          // tell the scope that our route is out of date
+          $scope.routeUpToDate = false;
 
           // display the directions on the map and in the steps
           $scope.directionsDisplay.setMap($scope.map.control.getGMap());
