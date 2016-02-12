@@ -28,7 +28,7 @@
       <div  id="searchboxEnd"></div>
     </div>
 
-    <div class="weather-steps-container" ng-hide "forecastMarkers.length === 0">
+    <div class="weather-steps-container" ng-show="forecastMarkers.length > 0">
       <div  ng-repeat-start="model in forecastMarkers | orderBy: 'properties.distance' track by model.id"></div>
 
       <div class="weather-steps-header" ng-if="$first">
@@ -40,6 +40,7 @@
               min = "0"
               max = "departureTimeDisplays.length-1"
               on-slide="slideDelegate(value, $event)"
+              on-stop-slide="slideDelegate(value, $event)"
                 >
           </span>
         </div>
@@ -51,7 +52,8 @@
           <a href="{{model.properties.moreWeatherInfo}}" target="_blank"><img class="img-rounded" src="{{model.properties.icon}}" /></a>
         </div>
         <div class="weathertext">
-          <div>{{model.properties.weather}}</div>
+          <div>{{model.properties.weather}}<span ng-show="model.properties.weather.length">, </span>
+          {{model.properties.temperature}}<span ng-show="model.properties.temperature.length">&deg;F</span></div>
           <div><span ng-repeat="hazard in model.properties.hazards"><a class="weatherhazard" href="{{hazard.url}}">{{hazard.text}}</a><span ng-hide="$last">, </span></span></div>
         </div>
 
@@ -62,7 +64,7 @@
           <a href="{{model.properties.credit}}" target="_blank"><img class='crediticon' src="{{model.properties.creditLogo}}" /></a>
         </div>
         <div class="weathertext">
-          <div><a href="{{model.properties.credit}}" target="_blank">Data Source: National Weather Service</a></div>
+          <div><a href="{{model.properties.credit}}" target="_blank">Source: National Weather Service</a></div>
           <div><a href="{{model.properties.disclaimer}}" target="_blank">Disclaimer</a></div>
         </div>
       </div>
@@ -70,7 +72,6 @@
 
     </div>    
     	
-    <div id="directionSteps" class="direction-steps-container"></div>    
   </div>
 
   <div class="col-md-8">
@@ -92,6 +93,7 @@
       </ui-gmap-markers>
   
 	  </ui-gmap-google-map>
+    <div id="directionSteps" class="direction-steps-container"></div>    
   </div>
 
 </div>

@@ -151,7 +151,7 @@ if ($bJsonSuccess) {
 	# report any error that stopped parsing
 	if( $@ ) {
 		print STDERR "\nERROR in JSON return:\n$@\n";
-		$bJsonSuccess = false;
+		$bJsonSuccess = 0;
 		push(@{$feature->{properties}{geojson::SOURCES}}, $@);
 	}
 	else {
@@ -165,6 +165,32 @@ if ($bJsonSuccess) {
 			'iconLink' => geojson::WEATHERICON
 			);
 
+		# first: make sure the unixtime is in good shape
+		my $unixOffset  = 0;
+		my $unixTime;
+		foreach my $jkey (keys %{$jsonObject}) {
+			if( $jkey eq 'location') {
+				$feature->{properties}{geojson::AREADESCRIPTION} = $jsonObject->{$jkey}{areaDescription};;
+			}			
+			elsif( $jkey eq 'creationDate') {
+				
+				$feature->{properties}{geojson::CREATIONDATE} = $jsonObject->{$jkey};
+				geojson::setTimeZone(%$feature,  $jsonObject->{$jkey});
+			}
+			# each time period will have a 'unixtime' field that defines the hours
+			my $unixTimeArray = $jsonObject->{$jkey}{'unixtime'};
+			if( defined($unixTimeArray) ) {
+				if( (not defined($unixTime)) or $unixTime < $unixTimeArray->[0]) {
+					$unixTime = $unixTimeArray->[0];
+				}
+			}
+
+			
+		}
+		if( defined($unixTime) and $unixTime > time() + 11 * 60 * 60) {
+			print STDERR "unixTime return from digitalJSON is bad: ".$unixTime." should be ".time()."\n";
+			$unixOffset = - 24*60*60;
+		}
 
 		# loop through the time periods
 		foreach my $jkey (keys %{$jsonObject}) {
@@ -181,7 +207,7 @@ if ($bJsonSuccess) {
 			if( defined($unixTimeArray) ) {
 			
 				for( my $tidx = 0; $tidx < scalar  (@$unixTimeArray); $tidx++) {
-					$utime = $unixTimeArray->[$tidx] ;
+					my $utime = $unixTimeArray->[$tidx] + $unixOffset;
 					my $sdt = DateTime->from_epoch(epoch => $utime );
 					my $edt = DateTime->from_epoch(epoch => 60 * 60 + $utime );
 			
@@ -198,7 +224,7 @@ if ($bJsonSuccess) {
 							$feature->{properties}{geojson::FORECASTSERIES}{$time_key}{$fieldxfer{$param}} = $value;
 						}
 						else {
-							$bJsonSuccess = false;
+							$bJsonSuccess = 0;
 						}		
 					}
 				}

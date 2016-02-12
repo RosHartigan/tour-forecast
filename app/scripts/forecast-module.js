@@ -119,7 +119,8 @@ angular.module('forecast-module',[])
       geoJSON.properties.arrivalDisplay = "";
     }
 
-    geoJSON.properties.weather = "No forecast available."
+    geoJSON.properties.weather = undefined;
+    geoJSON.properties.hazards = undefined;
     geoJSON.properties.icon = "https://maps.gstatic.com/mapfiles/ms2/micons/blue.png";
     
     if( this.forecastGeoJSON !== undefined && this.forecastGeoJSON.properties !== undefined ){
@@ -144,7 +145,7 @@ angular.module('forecast-module',[])
         geoJSON.properties.moreWeatherInfo = srcProps.moreWeatherInfo;
       }
       else {
-        geoJSON.properties.moreWeatherInfo = 'http://www.weather.gov/';
+        geoJSON.properties.moreWeatherInfo = 'http://forecast.weather.gov/MapClick.php?textField1=' + geoJSON.properties.latitude + '&textField2=' + geoJSON.properties.longitude;
       }
 
       // now move all the credit stuff...
@@ -155,24 +156,40 @@ angular.module('forecast-module',[])
       // get the forecast for this time slot    
       var dtime_string = geoJSON.properties.arrivalTime.toISOString();
       for( var timekey in srcProps.forecastSeries) {
-        if( dtime_string >= timekey  && dtime_string < srcProps.forecastSeries[timekey]['timeEndUTC']) {
-          
-          // icon
-          geoJSON.properties.icon = forecastIconService.swapIcon(srcProps.forecastSeries[timekey]['weatherIcon'], 'nws', 'weather.com', 'i');
-          
-          // weather summary
-          geoJSON.properties.weather = srcProps.forecastSeries[timekey]['weatherSummary'];  
+        if( dtime_string >= timekey ) {
+          if( dtime_string < srcProps.forecastSeries[timekey]['timeEndUTC']) {
+            var forecast = srcProps.forecastSeries[timekey];
+            // icon
+            geoJSON.properties.icon = forecastIconService.swapIcon(forecast['weatherIcon'], 'nws', 'weather.com', 'i');
+            
+            // weather summary
+            if( forecast['weatherSummary'] !== undefined) {
+              geoJSON.properties.weather = forecast['weatherSummary'];  
+            }
+            // backup - use weather text
+            else if( forecast['weatherText'] !== undefined && geoJSON.properties.weather === undefined) {
+              geoJSON.properties.weather = forecast['weatherText'];  
+            }
 
-          // temp
-          // todo
-
-          // hazards
-          geoJSON.properties.hazards = srcProps.forecastSeries[timekey]['hazards'];           
+            // temp
+            geoJSON.properties.temperature = forecast['temperature'];  
+            
+            // hazards
+            // don't overwrite if already set
+            if( forecast['hazards'] !== undefined) {
+              geoJSON.properties.hazards = srcProps.forecastSeries[timekey]['hazards'];           
+            }
+          }
+          else {
+          }          
         }
 
       }
     }
-    
+    // make sure user realized we have no data here
+    if(  geoJSON.properties.weather === undefined){
+        geoJSON.properties.weather = "No forecast available.";
+    }
     return geoJSON;
    
   }
@@ -280,7 +297,7 @@ angular.module('forecast-module',[])
   return pointForecast;
 
 })
-.service('forecastIconService', function(){
+.service('forecastIconService', function($log){
     this.swapIcon = function(icon, fromSet, toSet, toSubset) {
 
     var translatedIcon = icon;
@@ -331,6 +348,7 @@ angular.module('forecast-module',[])
         'rasn': 'snow',
         'nrasn': 'nt_snow',
         'fzra': 'sleet',
+        'nfzra': 'nt_sleet',
         'mix': 'sleet',
         'raip': 'sleet',
         'nraip': 'nt_sleet',    
@@ -364,8 +382,18 @@ angular.module('forecast-module',[])
       var iconPieces = icon.split('/');
       var iconName = iconPieces.pop();
       var iconNamePieces = iconName.split('.');
+
+
       var iconRoot = iconNamePieces[0];
 
+      // wwed out the nws icons with percentages (ie sn90)      
+      for( var ii = 10; iconRoot.length > 2 && ii <= 100; ii += 10 ) {
+        var s = "" + ii;
+        if( iconRoot.length > s. length && iconRoot.indexOf(s) === iconRoot.length-s.length) {
+          iconRoot = iconRoot.substring(0,iconRoot.length-s.length);
+          break;
+        }
+      }
       var map = icon_map[fromSet + "_" + toSet];
       var mappedIconRoot = map[iconRoot];
       if( mappedIconRoot !== undefined ) {
