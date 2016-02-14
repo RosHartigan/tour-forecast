@@ -1,0 +1,34 @@
+<div class="weather-steps-container" ng-show="featureCollection.length > 0">
+    
+  <div  ng-repeat-start="model in featureCollection | orderBy: 'properties.distance' track by model.id"></div>
+
+  <div class="weather-steps-header" ng-if="$first">
+    <div>Route Forecast: <strong>{{departureTimeDisplays[departureTimeIdx].display}}</strong></div>
+    <div class="timeslider">
+      <span slider
+          ng-model="departureTimeIdx"
+          tooltip="hide"
+          min = "0"
+          max = "departureTimeDisplays.length-1"
+          on-slide="slideDelegate(value, $event)"
+          on-stop-slide="slideDelegate(value, $event)"
+            >
+      </span>
+    </div>
+  </div>
+
+  <weather-step></weather-step>
+
+  <div class="weather-step credit-step" ng-if="$last">
+    <div class="weathericon">
+      <a href="{{model.properties.credit}}" target="_blank"><img class='crediticon' src="{{model.properties.creditLogo}}" /></a>
+    </div>
+    <div class="weathertext">
+      <div><a href="{{model.properties.credit}}" target="_blank">Source: National Weather Service</a></div>
+      <div><a href="{{model.properties.disclaimer}}" target="_blank">Disclaimer</a></div>
+    </div>
+  </div>
+  <div ng-repeat-end></div>
+
+</div>    
+      

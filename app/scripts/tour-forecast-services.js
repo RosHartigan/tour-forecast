@@ -1,5 +1,12 @@
 angular.module('tourForecast.services',[])
 
+// forecastLocationService analyzes a path and determines
+// an appropriate set of locations for which to fetch
+// the forecast
+
+.service('forecastLocationService', function() {
+
+})
 
 // forecastService creates a library of lat/lon based forecasts
 // and provides helper functions which create a time specific

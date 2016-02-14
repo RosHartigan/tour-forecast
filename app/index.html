@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html ng-app="tour-forecast-app"  id='ng-app'>
+<html ng-app="tourForecastApp"  id='ng-app'>
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -17,7 +17,7 @@
           rel='stylesheet' type='text/css'>
 </head>
 
-<body ng-controller="tour-forecast-ctrl">
+<body ng-controller="tourForecastCtrl">
 <div class="container">
 <div class="row">
 
@@ -28,49 +28,7 @@
       <div  id="searchboxEnd"></div>
     </div>
 
-    <div class="weather-steps-container" ng-show="forecastMarkers.length > 0">
-      <div  ng-repeat-start="model in forecastMarkers | orderBy: 'properties.distance' track by model.id"></div>
-
-      <div class="weather-steps-header" ng-if="$first">
-        <div>Route Forecast: <strong>{{departureTimeDisplays[departureTimeIdx].display}}</strong></div>
-        <div class="timeslider">
-          <span slider
-              ng-model="departureTimeIdx"
-              tooltip="hide"
-              min = "0"
-              max = "departureTimeDisplays.length-1"
-              on-slide="slideDelegate(value, $event)"
-              on-stop-slide="slideDelegate(value, $event)"
-                >
-          </span>
-        </div>
-      </div>
-      
-      <div class="weather-step">
-        <div class="placetext"><strong>{{model.properties.arrivalDisplay}}</strong> - <em>{{model.properties.areaDescription}}</em></div>
-        <div class="weathericon">
-          <a href="{{model.properties.moreWeatherInfo}}" target="_blank"><img class="img-rounded" src="{{model.properties.icon}}" /></a>
-        </div>
-        <div class="weathertext">
-          <div>{{model.properties.weather}}<span ng-show="model.properties.weather.length">, </span>
-          {{model.properties.temperature}}<span ng-show="model.properties.temperature.length">&deg;F</span></div>
-          <div><span ng-repeat="hazard in model.properties.hazards"><a class="weatherhazard" href="{{hazard.url}}">{{hazard.text}}</a><span ng-hide="$last">, </span></span></div>
-        </div>
-
-      </div> 
-      
-      <div class="weather-step credit-step" ng-if="$last">
-        <div class="weathericon">
-          <a href="{{model.properties.credit}}" target="_blank"><img class='crediticon' src="{{model.properties.creditLogo}}" /></a>
-        </div>
-        <div class="weathertext">
-          <div><a href="{{model.properties.credit}}" target="_blank">Source: National Weather Service</a></div>
-          <div><a href="{{model.properties.disclaimer}}" target="_blank">Disclaimer</a></div>
-        </div>
-      </div>
-      <div ng-repeat-end></div>
-
-    </div>    
+    <weather-step-list feature-Collection="forecastMarkers"></weather-step-list>
     	
   </div>
 
@@ -107,7 +65,8 @@
 <script type='text/javascript' src='./scripts/vendor/angular-bootstrap-slider/angular-bootstrap-slider.js'></script>
 <script type='text/javascript' src='./scripts/vendor/date.js'></script>
 <script type='text/javascript' src='./scripts/vendor/date.format.js'></script>
-<script type='text/javascript' src='./scripts/forecast-module.js'></script>
+<script type='text/javascript' src='./scripts/tour-forecast-services.js'></script>
+<script type='text/javascript' src='./scripts/tour-forecast-directives.js'></script>
 <script type='text/javascript' src='./scripts/tour-forecast-app.js'></script>
 
 </body>

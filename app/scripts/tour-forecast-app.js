@@ -14,7 +14,7 @@
   // You should have received a copy of the GNU General Public License
   // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-var mapApp = angular.module('tour-forecast-app', ['uiGmapgoogle-maps', 'forecast-module', 'ui.bootstrap-slider'])
+var mapApp = angular.module('tourForecastApp', ['uiGmapgoogle-maps', 'tourForecast.services', 'tourForecast.directives', 'ui.bootstrap-slider', 'nemLogging'])
 
 .config(['uiGmapGoogleMapApiProvider', '$httpProvider', function (GoogleMapApi) {
   GoogleMapApi.configure({
@@ -23,17 +23,15 @@ var mapApp = angular.module('tour-forecast-app', ['uiGmapgoogle-maps', 'forecast
     libraries: 'drawing,geometry,visualization,places'
   });
 }])
-
-// Enable AngularJS to send its requests with the appropriate CORS headers
-  // globally for the whole app:
-
 .run(['$templateCache', function ($templateCache) {
   $templateCache.put('searchboxStart.tpl.html', '<input id="pac-input" class="pac-controls" type="text" placeholder="Starting Location">');
   $templateCache.put('searchboxEnd.tpl.html', '<input id="pac-input" class="pac-controls" type="text" placeholder="Destination">');
   $templateCache.put('window.tpl.html', '<div ng-controller="WindowCtrl" ng-init="showPlaceDetails(parameter)">{{place.name}}</div>');
 }])
-.controller("tour-forecast-ctrl",['$scope', '$timeout', 'uiGmapLogger','uiGmapGoogleMapApi', 'forecastService',
+.controller("tourForecastCtrl",['$scope', '$timeout', 'nemSimpleLogger','uiGmapGoogleMapApi', 'forecastService',
 function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
+
+  $scope.forecastMarkers = [];
 
  $log.currentLevel = $log.LEVELS.debug;
 
@@ -117,93 +115,10 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
       end:null
     },
 
-    departureTimeIdx: 0,
-
-    departureTimeDisplay: "now",
-    departureTimeDisplays: [{'display':"now", 'dateObj':null}],
-
     routeUpToDate : false
   });
 
-  // SLIDING TIME SELECTION
-  // build a list of possible departure times for the slider
-  $scope.rebuildDepartureTimes = function () {
-      
-    $scope.departureTimeIdx = 0;
-
-    $scope.departureTimeDisplays = [{'display':"now", 'dateObj':null}];
-
-    if( $scope.forecastMarkers.length === 0) {
-      return;
-    }
-    var nextTime = new Date();
-    nextTime.setMinutes(0);
-    nextTime.setSeconds(0);
-    nextTime.setMilliseconds(0);
-
-    // also add the next few hours
-    $scope.addDepartureTime(nextTime, 1);
-    $scope.addDepartureTime(nextTime, 1);
-    
-    // every three hours for the first 24, starting on the next multiple of 3
-    nextTime.setHours(nextTime.getHours() - nextTime.getHours() % 3);
-    for( var idx = 0; idx < 24; idx += 3 ) {
-      $scope.addDepartureTime(nextTime, 3);
-    }
-
-    // every 6 hours for the next 48
-    for( var idx = 0; idx < 42; idx += 6 ) {
-      $scope.addDepartureTime(nextTime, 6);
-    }
-  };
-
-  // add a given departure time display and obj to the slider menu
-  $scope.addDepartureTime = function(theDateTime, theHourOffset) {
-
-    if( ! $scope.routePlaces.start ) {
-      return;
-    }
-
-    theDateTime.add({ hours: theHourOffset});
-
-    var theLocation =  $scope.forecastMarkers[0].properties;
-    var dateTimeString = forecastService.createPrettyLocalDateTime(theLocation.latitude, theLocation.longitude, theDateTime);
-
-    $scope.departureTimeDisplays.push(
-      {
-        'display':dateTimeString, 
-        'dateObj': new Date(theDateTime.getTime())
-      }
-      );
-  }
-
-   // handle slide events
-  $scope.slideDelegate = function (value, event) {
-
-    var dt =  $scope.departureTimeDisplays[value].dateObj;
-      if( dt === null ) {
-        dt = new Date();
-      }
-      
-    $scope.forecastMarkers.forEach(function(geoJSON) {
-      forecastService.updateGeoJSONInstance(geoJSON, dt);
-    });
-  };
-
-  // watching so we an update the time.... there has to 
-  // be a better way...
-  $scope.$watch(
-    function watchForecastModelTimezone( scope ) {
-        // Return the "result" of the watch expression.
-        if( $scope.forecastMarkers.length > 0) {
-          return $scope.forecastMarkers[0].properties.icon;
-        }
-        return( "" );
-    },
-    function handleChange( newValue, oldValue ) {
-        $scope.rebuildDepartureTimes();
-    }
-  );
+  
   $scope.createWeatherStepsFromDirections = function(directions, routeIdx) {
 
       // reset our directions markers
@@ -392,9 +307,6 @@ function ($scope, $timeout, $log,GoogleMapApi, forecastService) {
 
 
       if (status === $scope.maps.DirectionsStatus.OK || status === $scope.maps.DirectionsStatus.ZERO_RESULTS) {
-          $log.debug("DirectionsResult");
-          $log.debug(directionResult);
-
           // tell the scope that our route is out of date
           $scope.routeUpToDate = false;
 
