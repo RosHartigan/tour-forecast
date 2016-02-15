@@ -9,16 +9,16 @@ angular.module('tourForecast.directives',['tourForecast.services', 'ui.bootstrap
     templateUrl: 'partials/weather-step-list.html',
     link: function(scope, elem, attrs) {
 
-    	var departureTimeIdx;
-    	var departureTimeDisplays = [{'display':"now", 'dateObj':null}];
+    	scope.departureTimeIdx=0;
+    	scope.departureTimeDisplays = [{'display':"now", 'dateObj':null}];
     	// SLIDING TIME SELECTION
 	  // build a list of possible departure times for the slider
 	  function rebuildDepartureTimes() {
 	      
 	      
-	    departureTimeIdx = 0;
+	    scope.departureTimeIdx = 0;
 
-	    departureTimeDisplays = [{'display':"now", 'dateObj':null}];
+	    scope.departureTimeDisplays = [{'display':"now", 'dateObj':null}];
 
 	    if( scope.featureCollection.length === 0) {
 	      return;
@@ -53,7 +53,7 @@ angular.module('tourForecast.directives',['tourForecast.services', 'ui.bootstrap
 	    var theLocation =  scope.featureCollection[0].properties;
 	    var dateTimeString = forecastService.createPrettyLocalDateTime(theLocation.latitude, theLocation.longitude, theDateTime);
 
-	    departureTimeDisplays.push(
+	    scope.departureTimeDisplays.push(
 	      {
 	        'display':dateTimeString, 
 	        'dateObj': new Date(theDateTime.getTime())
@@ -64,7 +64,7 @@ angular.module('tourForecast.directives',['tourForecast.services', 'ui.bootstrap
 	   // handle slide events
 	  scope.slideDelegate = function (value, event) {
 	  	console.log(value);
-	    var dt = departureTimeDisplays[value].dateObj;
+	    var dt = scope.departureTimeDisplays[value].dateObj;
 	      if( dt === null ) {
 	        dt = new Date();
 	      }
