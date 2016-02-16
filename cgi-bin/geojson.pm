@@ -51,14 +51,15 @@ sub create_feature($$) {
 	my $lat = shift;
 	my $lon = shift;
 
-	my $latLonString =  $lat.",".$lon;
-		
+	my @lonlatArray =  ($lon, $lat);
+	my $lonLatString = "$lon, $lat";	
+
 	my $feature = {
 		type => "Feature",
-		id => $latLonString,
+		id => $lonLatString,
 		geometry => {
 			type => "Point",
-			coordinates => $latLonString
+			coordinates =>\@lonlatArray
 		}
 	};
 
@@ -85,12 +86,11 @@ sub create_time_slot(\%$$) {
 	return $time_key;
 }
 
-sub getLatLon(\%) {
+sub getLonLat(\%) {
 	my $feature = shift;
 	
-	my $latLonString = $feature->{geometry}{coordinates};
+	my @coords = @{$feature->{geometry}{coordinates}};
 
-	my @coords = split(',',$latLonString);
 	return @coords;
 
 }

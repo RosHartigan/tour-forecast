@@ -4,7 +4,7 @@ angular.module('tourForecast.services',['nemLogging'])
 // an appropriate set of locations for which to fetch
 // the forecast
 
-.factory('forecastLocationFactory', function($log, $timeout, forecastService) {
+.factory('forecastLocationFactory', function($log, $timeout, $http, forecastService) {
   
    function forecastLocationFactory() {
     return this;
@@ -102,6 +102,8 @@ angular.module('tourForecast.services',['nemLogging'])
       distanceMeters += step.distance.value;
       travelSecs += step.duration.value;
     }
+
+
   };
 
   // add a weaterh step after getting additional info about it from google
@@ -115,6 +117,39 @@ angular.module('tourForecast.services',['nemLogging'])
       travelMode: google.maps.DirectionsTravelMode.DRIVING
     };
 
+    if( ! tryCount ) {
+    //https://api.mapbox.com/distances/v1/mapbox/{profile}?access_token=<your access token>
+    var mapboxKey = 'pk.eyJ1IjoicmNvIiwiYSI6IndNQWZoeTAifQ.xC9myqUZVnPPsx1of1liyQ';
+    var me = this;
+    var url = "https://api.mapbox.com/distances/v1/mapbox/driving?access_token=" + mapboxKey;
+
+
+    $http.post(url, {
+                      "coordinates": [ [ origin.lng(), origin.lat() ],  [destination.lng(), destination.lat()]]
+                    }
+    )
+    .then(function(response) {
+        $log.debug("Call to mapbox Distance API succeeded");
+        $log.debug(response);
+        $log.debug(response.data.durations)
+       
+    }, function(response) {
+        $log.debug("Call to mapbox Distance API FAILED");
+        $log.debug(response);
+    });
+
+    url = 'https://api.mapbox.com/v4/directions/mapbox.driving/'+origin.lng()+','+origin.lat()+';'+destination.lng()+','+destination.lat()+'.json?alternatives=false&access_token=' + mapboxKey;
+    $http.get(url)
+    .then(function(response) {
+        $log.debug("Call to mapbox Directions API succeeded");
+        $log.debug(response);
+       $log.debug(response.data.destination.properties.name);
+       
+    }, function(response) {
+        $log.debug("Call to mapbox Directions API FAILED");
+        $log.debug(response);
+    });
+}
     // Route the directions and pass the response to a
     // function to create markers for each step.
     var directionsService = new maps.DirectionsService();

@@ -43,7 +43,7 @@ sub compileForecastFromDWML($\%) {
 	#    weather, condtains list of weather-conditions
 	# serialize the structure
 	
-	my ($lat, $lon) = geojson::getLatLon(%$feature);
+	my ($lon, $lat) = geojson::getLonLat(%$feature);
 
 	# creation date from head
 	foreach my $cdate ($doc->findnodes('/dwml/head/product/creation-date')) {
