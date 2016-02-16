@@ -6,6 +6,6 @@
   <div class="weathertext">
     <div>{{model.properties.weather}}<span ng-show="model.properties.weather.length">, </span>
     {{model.properties.temperature}}<span ng-show="model.properties.temperature.length">&deg;F</span></div>
-    <div><span ng-repeat="hazard in model.properties.hazards"><a class="weatherhazard" href="{{hazard.url}}">{{hazard.text}}</a><span ng-hide="$last">, </span></span></div>
+    <div><span ng-repeat="hazard in model.properties.hazards"><a class="weatherhazard" href="{{hazard.url}}" target="_blank">{{hazard.text}}</a><span ng-hide="$last">, </span></span></div>
   </div>
 </div> 

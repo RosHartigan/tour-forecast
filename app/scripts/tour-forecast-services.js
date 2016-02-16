@@ -42,7 +42,6 @@ angular.module('tourForecast.services',['nemLogging'])
 
       // add the step itself if its at APPROX the right distance
       if(  (distanceMeters - lastDistance) > (STEP_LENGTH - SLUSH)  ) {  
-        $log.debug("step " +ii + " " + distanceMeters + " " + travelSecs);
         var gjStep = forecastService.createGeoJSONInstance(step.lat_lngs[0].lat(), step.lat_lngs[0].lng(),departureTime, distanceMeters, travelSecs);
         forecastMarkers.push(gjStep);
         lastDistance = distanceMeters;
@@ -91,8 +90,6 @@ angular.module('tourForecast.services',['nemLogging'])
          
           lastDistance = distanceMeters + interStepDist;
 
-          $log.debug( ii + " " + jj + " " + lastDistance / 1000);
-
           // add this step after determining travel time
           forecastLocationFactory.addWeatherStepLater(step.lat_lngs[0], distanceMeters, travelSecs, step.lat_lngs[jj], lastDistance, departureTime, forecastMarkers, maps);
 
@@ -117,39 +114,39 @@ angular.module('tourForecast.services',['nemLogging'])
       travelMode: google.maps.DirectionsTravelMode.DRIVING
     };
 
-    if( ! tryCount ) {
-    //https://api.mapbox.com/distances/v1/mapbox/{profile}?access_token=<your access token>
-    var mapboxKey = 'pk.eyJ1IjoicmNvIiwiYSI6IndNQWZoeTAifQ.xC9myqUZVnPPsx1of1liyQ';
-    var me = this;
-    var url = "https://api.mapbox.com/distances/v1/mapbox/driving?access_token=" + mapboxKey;
+    if( ! tryCount && false) {
+        //https://api.mapbox.com/distances/v1/mapbox/{profile}?access_token=<your access token>
+        var mapboxKey = 'pk.eyJ1IjoicmNvIiwiYSI6IndNQWZoeTAifQ.xC9myqUZVnPPsx1of1liyQ';
+        var me = this;
+        var url = "https://api.mapbox.com/distances/v1/mapbox/driving?access_token=" + mapboxKey;
 
 
-    $http.post(url, {
-                      "coordinates": [ [ origin.lng(), origin.lat() ],  [destination.lng(), destination.lat()]]
-                    }
-    )
-    .then(function(response) {
-        $log.debug("Call to mapbox Distance API succeeded");
-        $log.debug(response);
-        $log.debug(response.data.durations)
-       
-    }, function(response) {
-        $log.debug("Call to mapbox Distance API FAILED");
-        $log.debug(response);
-    });
+        $http.post(url, {
+                          "coordinates": [ [ origin.lng(), origin.lat() ],  [destination.lng(), destination.lat()]]
+                        }
+        )
+        .then(function(response) {
+            $log.debug("Call to mapbox Distance API succeeded");
+            $log.debug(response);
+            $log.debug(response.data.durations)
+           
+        }, function(response) {
+            $log.debug("Call to mapbox Distance API FAILED");
+            $log.debug(response);
+        });
 
-    url = 'https://api.mapbox.com/v4/directions/mapbox.driving/'+origin.lng()+','+origin.lat()+';'+destination.lng()+','+destination.lat()+'.json?alternatives=false&access_token=' + mapboxKey;
-    $http.get(url)
-    .then(function(response) {
-        $log.debug("Call to mapbox Directions API succeeded");
-        $log.debug(response);
-       $log.debug(response.data.destination.properties.name);
-       
-    }, function(response) {
-        $log.debug("Call to mapbox Directions API FAILED");
-        $log.debug(response);
-    });
-}
+        url = 'https://api.mapbox.com/v4/directions/mapbox.driving/'+origin.lng()+','+origin.lat()+';'+destination.lng()+','+destination.lat()+'.json?alternatives=false&access_token=' + mapboxKey;
+        $http.get(url)
+        .then(function(response) {
+            $log.debug("Call to mapbox Directions API succeeded");
+            $log.debug(response);
+           $log.debug(response.data.destination.properties.name);
+           
+        }, function(response) {
+            $log.debug("Call to mapbox Directions API FAILED");
+            $log.debug(response);
+        });
+    }
     // Route the directions and pass the response to a
     // function to create markers for each step.
     var directionsService = new maps.DirectionsService();
@@ -366,7 +363,7 @@ angular.module('tourForecast.services',['nemLogging'])
             // hazards
             // don't overwrite if already set
             if( forecast['hazards'] !== undefined) {
-              geoJSON.properties.hazards = srcProps.forecastSeries[timekey]['hazards'];           
+              geoJSON.properties.hazards = forecast['hazards'];           
             }
           }
           else {

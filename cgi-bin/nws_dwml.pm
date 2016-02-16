@@ -107,11 +107,11 @@ sub compileForecastFromDWML($\%) {
 
 		#credits & logo
 
-		#only return the data for our point
-		if( index($lat,$location{'latititude'}) != -1 && index($lon,$location{'longitude'}) != -1  ) {
+		#only return the data for our point ??? 
+		if( sprintf( "%.2f", $lat) eq sprintf ("%.2f", $location{'latitude'}) and sprintf("%.2f", $lon) eq sprintf("%.2f", $location{'longitude'}) ) {
+
 			$locations{$lk} = \%location;
 		}			
-		
 	} 
 	
 	#get the time layouts
@@ -313,6 +313,10 @@ sub compileForecastFromDWML($\%) {
 									}
 									elsif( length($hazard_url) ne 0  ) {
 										$value = {'url' => $hazard_url, 'text' => $value};
+									}
+									else {
+										
+										$value = {'url' => 'http://forecast.weather.gov/MapClick.php?textField1='.$lat.'&textField2='.$lon, 'text' => $value};
 									}
 									push(@value_array,$value);
 								}
